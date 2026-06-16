@@ -11,6 +11,8 @@
 - Gymnasium 风格环境接口（自实现，不强制依赖 gymnasium）
 - 低维状态输入（11维特征向量）
 - CUDA 加速训练（自动检测 GPU）
+- 终端实时刷新游玩（Windows 使用 msvcrt，无需 pygame）
+- 方向键控制（人工游玩使用绝对方向，DQN 内部使用相对动作）
 
 ## 2. 当前环境检测结果
 
@@ -50,11 +52,12 @@ snake_rl/
 ├── requirements.txt       # 实际依赖列表
 ├── environment_report.txt # 环境检测报告
 ├── main.py                # 加载模型观看 Agent 玩
-├── play_human.py          # 人工游玩入口
+├── play_human.py          # 人工游玩入口（终端实时刷新）
 ├── train.py               # 训练入口
 ├── agent.py               # DQN Agent 实现
 ├── snake_env.py           # Snake RL 环境 (Gymnasium 风格)
-├── snake_game.py          # Snake 游戏纯逻辑
+├── snake_game.py          # Snake 游戏纯逻辑 + 方向转换函数
+├── terminal_input.py      # 终端输入模块 (msvcrt 非阻塞键盘)
 ├── replay_buffer.py       # 经验回放缓冲区
 ├── models.py              # DQN 神经网络模型
 ├── utils.py               # 工具函数
@@ -64,26 +67,27 @@ snake_rl/
 
 ## 6. 如何人工游玩
 
-### 终端版（无需 pygame）
+### 终端实时版（无需 pygame，推荐）
 ```bash
 conda activate nlp-env
 cd snake_rl
 python play_human.py
 ```
 
-控制方式：
-- `w` / `i` = 左转
-- `o` = 直行
-- `p` = 右转
-- `q` = 退出
-- `r` = 重新开始
+**控制方式：**
+- `↑` `↓` `←` `→` 方向键移动（无需回车，实时响应）
+- `空格` 暂停/继续
+- `R` 重新开始
+- `Q` 退出
+
+**说明：** 终端版使用 `msvcrt` 实现非阻塞键盘输入，蛇按固定 FPS 自动前进，方向键控制绝对方向（上/下/左/右），内部自动转换为 DQN 的相对动作（直行/左转/右转）。
 
 ### 图形界面版（需安装 pygame）
 ```bash
 pip install pygame
 python play_human.py
 ```
-使用方向键或 WASD 控制。
+使用方向键控制。
 
 ## 7. 如何训练
 
@@ -105,9 +109,11 @@ python train.py --episodes 2000 --seed 123 --save-path checkpoints/my_model.pt
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--episodes` | 1000 | 训练轮数 |
-| `--render` | False | 是否渲染 |
+| `--render` | False | 是否渲染（默认关闭，加 --render 会变慢） |
 | `--save-path` | checkpoints/dqn_snake.pt | 模型保存路径 |
 | `--seed` | 42 | 随机种子 |
+
+**注意：** 训练默认不渲染终端，保证训练速度。如需观察训练过程，可加 `--render` 参数，但会显著降低训练速度。
 
 **训练输出示例：**
 ```
@@ -119,12 +125,29 @@ Episode   500 | Score:   8 | Reward:    72.31 | Eps: 0.9500 | Best:  12 | Avg50:
 ## 8. 如何观看 Agent
 
 ```bash
-# 终端模式
+# 终端逐帧观看（推荐，实时刷新棋盘）
+python main.py --model checkpoints/dqn_snake.pt --episodes 5 --fps 10 --terminal-render
+
+# 终端摘要模式（仅 episode 结束后输出统计）
 python main.py --model checkpoints/dqn_snake.pt --episodes 5
 
 # 图形界面模式 (需 pygame)
 python main.py --model checkpoints/dqn_snake.pt --episodes 10 --fps 15
 ```
+
+**命令行参数：**
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--model` | checkpoints/dqn_snake.pt | 模型路径 |
+| `--episodes` | 5 | 观看局数 |
+| `--grid-size` | 20 | 网格大小 |
+| `--fps` | 10 | 帧率 |
+| `--terminal-render` | False | 终端逐帧渲染 |
+
+**说明：**
+- 使用 `--terminal-render` 时，每一步都显示棋盘，按 `Q` 可退出
+- 不使用 `--terminal-render` 时，仅在 episode 结束后输出统计信息
+- 训练时默认不渲染，保证训练速度
 
 ## 9. 状态空间设计
 
@@ -151,6 +174,8 @@ python main.py --model checkpoints/dqn_snake.pt --episodes 10 --fps 15
 
 ## 10. 动作空间设计
 
+### DQN 动作空间（相对动作）
+
 | 动作编号 | 含义 | 说明 |
 |----------|------|------|
 | 0 | 直行 | 保持当前方向 |
@@ -158,9 +183,27 @@ python main.py --model checkpoints/dqn_snake.pt --episodes 10 --fps 15
 | 2 | 右转 | 相对当前方向右转90° |
 
 **相对动作 vs 绝对动作：**
-- 使用相对动作（直行/左转/右转）而非绝对动作（上/下/左/右）
+- DQN 使用相对动作（直行/左转/右转）而非绝对动作（上/下/左/右）
 - 避免蛇直接反向移动导致立即死亡
-- 更符合人类直觉
+- 状态空间更简洁（11维 vs 需要更多特征）
+
+### 人工控制（绝对方向）
+
+人工游玩使用方向键控制绝对方向（上/下/左/右），通过 `absolute_direction_to_relative_action()` 函数自动转换为相对动作：
+
+```python
+def absolute_direction_to_relative_action(current_direction, target_direction):
+    diff = (target_direction - current_direction) % 4
+    if diff == 0:   return 0  # 直行
+    elif diff == 1: return 2  # 右转 90°
+    elif diff == 3: return 1  # 左转 90°
+    else:           return 0  # 反方向，保持直行（不允许）
+```
+
+**设计优势：**
+- 人工玩家使用直觉化的方向键控制
+- DQN 训练使用相对动作，状态空间更紧凑
+- 转换函数处理了反向移动的边界情况
 
 ## 11. 奖励函数设计
 

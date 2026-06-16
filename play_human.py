@@ -1,69 +1,124 @@
-"""人工游玩 Snake (终端版)。"""
+"""人工游玩 Snake - 终端实时刷新版。"""
 
-import os
 import sys
 import time
 
-from snake_game import SnakeGame, ACTION_STRAIGHT, ACTION_LEFT, ACTION_RIGHT
+from snake_game import (
+    SnakeGame, ACTION_STRAIGHT, ACTION_LEFT, ACTION_RIGHT,
+    DIR_UP, DIR_RIGHT, DIR_DOWN, DIR_LEFT,
+    absolute_direction_to_relative_action,
+)
+from terminal_input import (
+    get_key_nonblocking, clear_screen, hide_cursor, show_cursor,
+    move_cursor_home, parse_arrow_key,
+)
 
 # 尝试导入 pygame
 try:
     import pygame
-
     HAS_PYGAME = True
 except ImportError:
     HAS_PYGAME = False
 
+DIRECTION_NAMES = {DIR_UP: "UP", DIR_RIGHT: "RIGHT", DIR_DOWN: "DOWN", DIR_LEFT: "LEFT"}
 
-def play_terminal():
-    """终端版人工游玩。"""
+
+def play_terminal_realtime(fps: int = 8):
+    """终端实时刷新版人工游玩。"""
     game = SnakeGame(grid_size=15, seed=None)
-    print("=" * 50)
-    print("Snake 终端版 - 人工游玩")
-    print("=" * 50)
-    print("控制方式:")
-    print("  w / i = 左转 (相对于当前方向)")
-    print("  o     = 直行")
-    print("  p     = 右转 (相对于当前方向)")
-    print("  q     = 退出")
-    print("  r     = 重新开始")
-    print("=" * 50)
-    input("按 Enter 开始...")
+    paused = False
+    last_action = ACTION_STRAIGHT
 
-    action_map = {"w": ACTION_LEFT, "i": ACTION_LEFT, "o": ACTION_STRAIGHT, "p": ACTION_RIGHT}
+    hide_cursor()
+    clear_screen()
 
-    while True:
-        os.system("cls" if os.name == "nt" else "clear")
-        print(game.render_terminal())
-        print("动作: w/i=左转, o=直行, p=右转, q=退出, r=重开")
+    try:
+        while True:
+            # 处理输入
+            key = get_key_nonblocking()
+            if key == "Q":
+                break
+            elif key == "R":
+                game.reset()
+                paused = False
+                last_action = ACTION_STRAIGHT
+            elif key == "SPACE":
+                paused = not paused
+            elif key in ("UP", "DOWN", "LEFT", "RIGHT"):
+                target_dir = parse_arrow_key(key)
+                if target_dir is not None:
+                    action = absolute_direction_to_relative_action(game.direction, target_dir)
+                    last_action = action
 
-        try:
-            key = input(">>> ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            break
+            # 游戏步进
+            if not paused and not game.done:
+                result = game.step(last_action)
+                last_action = ACTION_STRAIGHT  # 重置为直行
 
-        if key == "q":
-            break
-        if key == "r":
-            game.reset()
-            continue
+            # 渲染
+            move_cursor_home()
+            _render_frame(game, paused, fps)
 
-        if key in action_map:
-            result = game.step(action_map[key])
-            if result["done"]:
-                os.system("cls" if os.name == "nt" else "clear")
-                print(game.render_terminal())
-                print(f"\n游戏结束! 最终得分: {result['score']}")
-                again = input("再来一局? (y/n): ").strip().lower()
-                if again == "y":
-                    game.reset()
-                    continue
-                else:
-                    break
-        else:
-            print("无效输入，请使用 w/i/o/p/q/r")
+            # 游戏结束处理
+            if game.done:
+                # 等待用户输入 r 重开或 q 退出
+                while True:
+                    k = get_key_nonblocking()
+                    if k == "Q":
+                        return
+                    elif k == "R":
+                        game.reset()
+                        paused = False
+                        last_action = ACTION_STRAIGHT
+                        break
+                    time.sleep(0.05)
 
-    print("感谢游玩!")
+            time.sleep(1.0 / fps)
+
+    finally:
+        show_cursor()
+
+
+def _render_frame(game: SnakeGame, paused: bool, fps: int):
+    """渲染一帧到终端。"""
+    grid_size = game.grid_size
+    lines = []
+
+    # 标题
+    lines.append(" Snake - Terminal Realtime")
+    lines.append("")
+
+    # 顶部边框
+    lines.append("+" + "---" * grid_size + "+")
+
+    # 网格
+    grid = [["." for _ in range(grid_size)] for _ in range(grid_size)]
+    for i, (r, c) in enumerate(game.snake):
+        if 0 <= r < grid_size and 0 <= c < grid_size:
+            grid[r][c] = "O" if i == 0 else "o"
+    if game.food:
+        fr, fc = game.food
+        grid[fr][fc] = "*"
+    for row in grid:
+        lines.append("|" + " ".join(f"{ch} " for ch in row) + "|")
+
+    # 底部边框
+    lines.append("+" + "---" * grid_size + "+")
+
+    # 状态信息
+    lines.append(f"  Score: {game.score}   Steps: {game.steps}   FPS: {fps}")
+    lines.append(f"  Direction: {DIRECTION_NAMES.get(game.direction, '?')}")
+    if paused:
+        lines.append("  [PAUSED]")
+    if game.done:
+        lines.append("  [GAME OVER] Press R to restart, Q to quit")
+    else:
+        lines.append("  Controls: Arrows=Move  SPACE=Pause  R=Restart  Q=Quit")
+
+    # 填充空行避免残影
+    output = "\n".join(lines)
+    sys.stdout.write(output)
+    sys.stdout.flush()
 
 
 def play_pygame():
@@ -80,8 +135,7 @@ def play_pygame():
     font = pygame.font.SysFont("consolas", 20)
 
     game = SnakeGame(grid_size=GRID_SIZE)
-    # 方向映射: 上下左右 -> 动作
-    dir_to_action = {}  # 需要根据当前方向计算
+    current_action = ACTION_STRAIGHT
 
     running = True
     while running:
@@ -93,45 +147,36 @@ def play_pygame():
                     running = False
                 elif event.key == pygame.K_r:
                     game.reset()
-                elif event.key in (pygame.K_UP, pygame.K_w):
-                    # 计算需要转向到朝上的动作
-                    target_dir = 0  # UP
-                    action = _dir_to_action(game.direction, target_dir)
-                    if action is not None:
-                        result = game.step(action)
-                elif event.key in (pygame.K_RIGHT, pygame.K_d):
-                    target_dir = 1  # RIGHT
-                    action = _dir_to_action(game.direction, target_dir)
-                    if action is not None:
-                        result = game.step(action)
-                elif event.key in (pygame.K_DOWN, pygame.K_s):
-                    target_dir = 2  # DOWN
-                    action = _dir_to_action(game.direction, target_dir)
-                    if action is not None:
-                        result = game.step(action)
-                elif event.key in (pygame.K_LEFT, pygame.K_a):
-                    target_dir = 3  # LEFT
-                    action = _dir_to_action(game.direction, target_dir)
-                    if action is not None:
-                        result = game.step(action)
+                    current_action = ACTION_STRAIGHT
+                elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
+                    key_map = {
+                        pygame.K_UP: DIR_UP,
+                        pygame.K_DOWN: DIR_DOWN,
+                        pygame.K_LEFT: DIR_LEFT,
+                        pygame.K_RIGHT: DIR_RIGHT,
+                    }
+                    target_dir = key_map[event.key]
+                    current_action = absolute_direction_to_relative_action(
+                        game.direction, target_dir
+                    )
+
+        # 执行动作
+        if not game.done:
+            game.step(current_action)
+            current_action = ACTION_STRAIGHT
 
         # 绘制
         screen.fill((0, 0, 0))
-
-        # 绘制网格
         for r, c in game.snake:
             color = (0, 200, 0) if (r, c) == game.snake[0] else (0, 150, 0)
             pygame.draw.rect(
                 screen, color, (c * CELL_SIZE, r * CELL_SIZE, CELL_SIZE - 1, CELL_SIZE - 1)
             )
-
         if game.food:
             fr, fc = game.food
             pygame.draw.rect(
                 screen, (255, 0, 0), (fc * CELL_SIZE, fr * CELL_SIZE, CELL_SIZE - 1, CELL_SIZE - 1)
             )
-
-        # 分数
         score_text = font.render(f"Score: {game.score}  Steps: {game.steps}", True, (255, 255, 255))
         screen.blit(score_text, (10, HEIGHT - 35))
 
@@ -145,23 +190,9 @@ def play_pygame():
     pygame.quit()
 
 
-def _dir_to_action(current_dir: int, target_dir: int) -> int:
-    """根据当前方向和目标方向计算动作。"""
-    diff = (target_dir - current_dir) % 4
-    if diff == 0:
-        return 0  # 直行
-    elif diff == 1:
-        return 2  # 右转
-    elif diff == 3:
-        return 1  # 左转
-    else:
-        return None  # 反向，不允许
-
-
 if __name__ == "__main__":
     if HAS_PYGAME:
         print("检测到 pygame，使用图形界面模式。")
         play_pygame()
     else:
-        print("未检测到 pygame，使用终端模式。")
-        play_terminal()
+        play_terminal_realtime(fps=8)

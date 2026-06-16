@@ -191,3 +191,22 @@ class SnakeGame:
         lines.append("+" + "---" * self.grid_size + "+")
         lines.append(f"Score: {self.score}  Steps: {self.steps}")
         return "\n".join(lines)
+
+
+def absolute_direction_to_relative_action(current_direction: int, target_direction: int) -> int:
+    """
+    将绝对方向转换为相对动作。
+    current_direction: 当前蛇的方向 (DIR_UP=0, DIR_RIGHT=1, DIR_DOWN=2, DIR_LEFT=3)
+    target_direction: 目标方向
+    返回: ACTION_STRAIGHT=0, ACTION_LEFT=1, ACTION_RIGHT=2
+    如果是反方向，返回 ACTION_STRAIGHT (不允许反向移动)
+    """
+    diff = (target_direction - current_direction) % 4
+    if diff == 0:
+        return ACTION_STRAIGHT  # 同方向，直行
+    elif diff == 1:
+        return ACTION_RIGHT  # 右转 90°
+    elif diff == 3:
+        return ACTION_LEFT  # 左转 90°
+    else:  # diff == 2，反方向
+        return ACTION_STRAIGHT  # 不允许反向，保持直行
