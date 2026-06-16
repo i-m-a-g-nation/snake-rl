@@ -27,7 +27,7 @@ ACTION_NAMES = {0: "Straight", 1: "Left", 2: "Right"}
 
 def watch_terminal_realtime(model_path: str, episodes: int = 5, grid_size: int = 20, fps: int = 10):
     """终端逐帧刷新观看 Agent。"""
-    env = SnakeEnv(grid_size=grid_size, max_steps=1000)
+    env = SnakeEnv(grid_size=grid_size)
     agent = DQNAgent(
         state_dim=env.observation_space_dim,
         action_dim=env.action_space_dim,
@@ -104,7 +104,7 @@ def _render_agent_frame(env: SnakeEnv, ep: int, total_eps: int, action: int, fps
 
 def watch_terminal_summary(model_path: str, episodes: int = 5, grid_size: int = 20):
     """终端模式观看 Agent (仅 episode 结束后输出统计)。"""
-    env = SnakeEnv(grid_size=grid_size, max_steps=1000)
+    env = SnakeEnv(grid_size=grid_size)
     agent = DQNAgent(
         state_dim=env.observation_space_dim,
         action_dim=env.action_space_dim,
@@ -152,7 +152,7 @@ def watch_pygame(model_path: str, episodes: int = 5, grid_size: int = 20, fps: i
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("consolas", 20)
 
-    env = SnakeEnv(grid_size=grid_size, max_steps=1000)
+    env = SnakeEnv(grid_size=grid_size)
     agent = DQNAgent(
         state_dim=env.observation_space_dim,
         action_dim=env.action_space_dim,

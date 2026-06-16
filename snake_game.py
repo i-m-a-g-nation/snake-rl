@@ -1,8 +1,8 @@
-"""Snake 游戏纯逻辑，不绑定 RL。"""
+"""Snake 游戏纯逻辑，不绑定 RL。支持 flood fill 可达空间计算。"""
 
 import random
 from collections import deque
-from typing import Optional
+from typing import Optional, Tuple
 
 # 动作定义: 0=直行, 1=左转, 2=右转
 ACTION_STRAIGHT = 0
@@ -70,7 +70,6 @@ class SnakeGame:
         if self.done:
             return {"reward": 0.0, "done": True, "score": self.score, "ate_food": False}
 
-        # 计算新方向 (不允许直接反向)
         new_dir = self._turn(self.direction, action)
         dr, dc = DIRECTIONS[new_dir]
         head_r, head_c = self.snake[0]
@@ -102,30 +101,106 @@ class SnakeGame:
             reward = 10.0
         else:
             self.snake.pop()
-            reward = -0.01  # 普通移动惩罚
+            reward = -0.01
 
         return {"reward": reward, "done": False, "score": self.score, "ate_food": ate_food}
 
+    def _simulate_action(self, action: int) -> Tuple[Tuple[int, int], int, bool]:
+        """
+        模拟一步动作，不修改游戏状态。
+        返回: (new_head, new_direction, would_die)
+        """
+        new_dir = self._turn(self.direction, action)
+        dr, dc = DIRECTIONS[new_dir]
+        head_r, head_c = self.snake[0]
+        new_head = (head_r + dr, head_c + dc)
+
+        r, c = new_head
+        if r < 0 or r >= self.grid_size or c < 0 or c >= self.grid_size:
+            return new_head, new_dir, True
+
+        # 撞自己检测: 需要考虑尾巴是否会在本步移走
+        # 如果不吃食物，尾巴会移走，所以尾巴位置不算危险
+        tail = self.snake[-1]
+        if new_head in self.snake and new_head != tail:
+            return new_head, new_dir, True
+
+        return new_head, new_dir, False
+
+    def _flood_fill(self, start: Tuple[int, int], obstacles: set) -> int:
+        """
+        从 start 位置出发，计算可达空间大小。
+        obstacles: 不可通行的位置集合
+        """
+        if start[0] < 0 or start[0] >= self.grid_size or start[1] < 0 or start[1] >= self.grid_size:
+            return 0
+        if start in obstacles:
+            return 0
+
+        visited = set()
+        queue = deque([start])
+        visited.add(start)
+
+        while queue:
+            r, c = queue.popleft()
+            for dr, dc in DIRECTIONS.values():
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < self.grid_size and 0 <= nc < self.grid_size:
+                    if (nr, nc) not in visited and (nr, nc) not in obstacles:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+
+        return len(visited)
+
+    def get_free_space_after_action(self, action: int) -> float:
+        """
+        计算执行某动作后从新蛇头可达的空格比例。
+        模拟时考虑蛇身移动（不吃食物时尾巴会移走）。
+        """
+        new_head, new_dir, would_die = self._simulate_action(action)
+        if would_die:
+            return 0.0
+
+        # 构建障碍物集合: 蛇身（除了尾巴，因为不吃食物时尾巴会移走）
+        # 注意：new_head 已经加入蛇头，所以障碍物是当前蛇身 + new_head - 尾巴
+        obstacles = set(self.snake)
+        obstacles.add(new_head)
+        # 如果不吃食物，尾巴会移走
+        if self.food is not None and new_head != self.food:
+            obstacles.discard(self.snake[-1])
+
+        total_cells = self.grid_size * self.grid_size
+        reachable = self._flood_fill(new_head, obstacles)
+        return reachable / total_cells
+
     def get_state(self) -> list:
         """
-        获取低维状态表示 (11维):
+        获取扩展状态表示 (17维):
         [danger_straight, danger_left, danger_right,
          dir_up, dir_down, dir_left, dir_right,
-         food_left, food_right, food_up, food_down]
+         food_left, food_right, food_up, food_down,
+         distance_to_food_normalized,
+         snake_length_normalized,
+         steps_since_food_normalized,
+         free_space_straight,
+         free_space_left,
+         free_space_right]
         """
         head_r, head_c = self.snake[0]
 
-        # 当前方向对应的三个方向: 直行, 左转, 右转
         straight_dir = self.direction
         left_dir = (self.direction - 1) % 4
         right_dir = (self.direction + 1) % 4
 
         def is_danger(d):
+            """危险判断: 与 step() 的碰撞逻辑一致（尾巴会移走不算危险）。"""
             dr, dc = DIRECTIONS[d]
             nr, nc = head_r + dr, head_c + dc
             if nr < 0 or nr >= self.grid_size or nc < 0 or nc >= self.grid_size:
                 return 1
-            if (nr, nc) in self.snake:
+            # 尾巴在不吃食物时会移走，不算危险
+            tail = self.snake[-1]
+            if (nr, nc) in self.snake and (nr, nc) != tail:
                 return 1
             return 0
 
@@ -142,22 +217,45 @@ class SnakeGame:
         # 食物相对位置
         if self.food is None:
             food_left = food_right = food_up = food_down = 0
+            dist = 0.0
         else:
             fr, fc = self.food
             food_left = 1 if fc < head_c else 0
             food_right = 1 if fc > head_c else 0
             food_up = 1 if fr < head_r else 0
             food_down = 1 if fr > head_r else 0
+            dist = abs(head_r - fr) + abs(head_c - fc)
+
+        # 归一化特征
+        max_dist = self.grid_size * 2
+        distance_to_food_normalized = dist / max_dist
+
+        max_len = self.grid_size * self.grid_size
+        snake_length_normalized = len(self.snake) / max_len
+
+        max_no_food = max(100, len(self.snake) * 20)
+        steps_since_food_normalized = min(self.steps / max_no_food, 1.0)
+
+        # Flood fill 可达空间
+        free_space_straight = self.get_free_space_after_action(ACTION_STRAIGHT)
+        free_space_left = self.get_free_space_after_action(ACTION_LEFT)
+        free_space_right = self.get_free_space_after_action(ACTION_RIGHT)
 
         return [
             danger_straight, danger_left, danger_right,
             dir_up, dir_down, dir_left, dir_right,
             food_left, food_right, food_up, food_down,
+            distance_to_food_normalized,
+            snake_length_normalized,
+            steps_since_food_normalized,
+            free_space_straight,
+            free_space_left,
+            free_space_right,
         ]
 
     def get_state_dim(self) -> int:
         """返回状态维度。"""
-        return 11
+        return 17
 
     def get_action_dim(self) -> int:
         """返回动作维度。"""
@@ -174,17 +272,12 @@ class SnakeGame:
     def render_terminal(self) -> str:
         """终端字符画渲染，返回字符串。"""
         grid = [["." for _ in range(self.grid_size)] for _ in range(self.grid_size)]
-
-        # 画蛇身
         for i, (r, c) in enumerate(self.snake):
             if 0 <= r < self.grid_size and 0 <= c < self.grid_size:
                 grid[r][c] = "O" if i == 0 else "o"
-
-        # 画食物
         if self.food:
             fr, fc = self.food
             grid[fr][fc] = "*"
-
         lines = ["+" + "---" * self.grid_size + "+"]
         for row in grid:
             lines.append("|" + " ".join(f"{ch} " for ch in row) + "|")
@@ -194,19 +287,13 @@ class SnakeGame:
 
 
 def absolute_direction_to_relative_action(current_direction: int, target_direction: int) -> int:
-    """
-    将绝对方向转换为相对动作。
-    current_direction: 当前蛇的方向 (DIR_UP=0, DIR_RIGHT=1, DIR_DOWN=2, DIR_LEFT=3)
-    target_direction: 目标方向
-    返回: ACTION_STRAIGHT=0, ACTION_LEFT=1, ACTION_RIGHT=2
-    如果是反方向，返回 ACTION_STRAIGHT (不允许反向移动)
-    """
+    """将绝对方向转换为相对动作。"""
     diff = (target_direction - current_direction) % 4
     if diff == 0:
-        return ACTION_STRAIGHT  # 同方向，直行
+        return ACTION_STRAIGHT
     elif diff == 1:
-        return ACTION_RIGHT  # 右转 90°
+        return ACTION_RIGHT
     elif diff == 3:
-        return ACTION_LEFT  # 左转 90°
-    else:  # diff == 2，反方向
-        return ACTION_STRAIGHT  # 不允许反向，保持直行
+        return ACTION_LEFT
+    else:
+        return ACTION_STRAIGHT

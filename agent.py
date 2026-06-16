@@ -1,4 +1,4 @@
-"""DQN Agent 实现。"""
+"""DQN Agent 实现。支持 Double DQN。"""
 
 import random
 from typing import Tuple
@@ -13,7 +13,7 @@ from replay_buffer import ReplayBuffer
 
 
 class DQNAgent:
-    """DQN 智能体，使用 policy network + target network + epsilon-greedy。"""
+    """DQN 智能体，支持 Double DQN。"""
 
     def __init__(
         self,
@@ -21,16 +21,16 @@ class DQNAgent:
         action_dim: int,
         hidden_dim: int = 128,
         gamma: float = 0.99,
-        lr: float = 1e-3,
-        batch_size: int = 64,
-        replay_size: int = 50000,
-        target_update_interval: int = 1000,
+        lr: float = 5e-4,
+        batch_size: int = 128,
+        replay_size: int = 100000,
+        target_update_interval: int = 500,
         epsilon_start: float = 1.0,
-        epsilon_end: float = 0.05,
-        epsilon_decay_steps: int = 10000,
+        epsilon_end: float = 0.02,
+        epsilon_decay_steps: int = 50000,
+        use_double_dqn: bool = True,
         device: str = None,
     ):
-        # 设备选择
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
@@ -44,6 +44,7 @@ class DQNAgent:
         self.epsilon_start = epsilon_start
         self.epsilon_end = epsilon_end
         self.epsilon_decay_steps = epsilon_decay_steps
+        self.use_double_dqn = use_double_dqn
 
         # 网络
         self.policy_net = DQN(state_dim, action_dim, hidden_dim).to(self.device)
@@ -53,7 +54,7 @@ class DQNAgent:
 
         # 优化器和损失
         self.optimizer = optim.Adam(self.policy_net.parameters(), lr=lr)
-        self.loss_fn = nn.SmoothL1Loss()  # Huber loss
+        self.loss_fn = nn.SmoothL1Loss()
 
         # 经验回放
         self.replay_buffer = ReplayBuffer(replay_size)
@@ -65,7 +66,6 @@ class DQNAgent:
         """epsilon-greedy 选择动作。"""
         if random.random() < epsilon:
             return random.randint(0, self.action_dim - 1)
-
         with torch.no_grad():
             state_t = torch.FloatTensor(state).unsqueeze(0).to(self.device)
             q_values = self.policy_net(state_t)
@@ -76,14 +76,7 @@ class DQNAgent:
         progress = min(self.train_step_count / self.epsilon_decay_steps, 1.0)
         return self.epsilon_start + progress * (self.epsilon_end - self.epsilon_start)
 
-    def store_transition(
-        self,
-        state: np.ndarray,
-        action: int,
-        reward: float,
-        next_state: np.ndarray,
-        done: bool,
-    ) -> None:
+    def store_transition(self, state, action, reward, next_state, done) -> None:
         """存储经验到回放缓冲区。"""
         self.replay_buffer.push(state, action, reward, next_state, done)
 
@@ -92,39 +85,37 @@ class DQNAgent:
         if len(self.replay_buffer) < self.batch_size:
             return 0.0
 
-        # 采样
-        states, actions, rewards, next_states, dones = self.replay_buffer.sample(
-            self.batch_size
-        )
+        states, actions, rewards, next_states, dones = self.replay_buffer.sample(self.batch_size)
 
-        # 转为 tensor
         states_t = torch.FloatTensor(states).to(self.device)
         actions_t = torch.LongTensor(actions).to(self.device)
         rewards_t = torch.FloatTensor(rewards).to(self.device)
         next_states_t = torch.FloatTensor(next_states).to(self.device)
         dones_t = torch.FloatTensor(dones).to(self.device)
 
-        # 计算当前 Q 值
+        # 当前 Q 值
         q_values = self.policy_net(states_t)
         q_values = q_values.gather(1, actions_t.unsqueeze(1)).squeeze(1)
 
-        # 计算目标 Q 值 (Bellman target)
+        # 目标 Q 值
         with torch.no_grad():
-            next_q_values = self.target_net(next_states_t).max(dim=1)[0]
-            target_q = rewards_t + self.gamma * next_q_values * (1 - dones_t)
+            if self.use_double_dqn:
+                # Double DQN: 用 policy_net 选动作，target_net 评估
+                next_actions = self.policy_net(next_states_t).argmax(dim=1)
+                next_q = self.target_net(next_states_t).gather(1, next_actions.unsqueeze(1)).squeeze(1)
+            else:
+                # 标准 DQN
+                next_q = self.target_net(next_states_t).max(dim=1)[0]
+            target_q = rewards_t + self.gamma * next_q * (1 - dones_t)
 
-        # 计算损失并更新
         loss = self.loss_fn(q_values, target_q)
 
         self.optimizer.zero_grad()
         loss.backward()
-        # Gradient clipping
         nn.utils.clip_grad_norm_(self.policy_net.parameters(), max_norm=1.0)
         self.optimizer.step()
 
         self.train_step_count += 1
-
-        # 更新 target network
         if self.train_step_count % self.target_update_interval == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
@@ -132,15 +123,12 @@ class DQNAgent:
 
     def save(self, path: str) -> None:
         """保存模型。"""
-        torch.save(
-            {
-                "policy_net": self.policy_net.state_dict(),
-                "target_net": self.target_net.state_dict(),
-                "optimizer": self.optimizer.state_dict(),
-                "train_step_count": self.train_step_count,
-            },
-            path,
-        )
+        torch.save({
+            "policy_net": self.policy_net.state_dict(),
+            "target_net": self.target_net.state_dict(),
+            "optimizer": self.optimizer.state_dict(),
+            "train_step_count": self.train_step_count,
+        }, path)
 
     def load(self, path: str) -> None:
         """加载模型。"""

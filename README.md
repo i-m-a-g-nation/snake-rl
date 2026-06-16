@@ -5,11 +5,13 @@
 本项目实现了一个经典的贪吃蛇（Snake）游戏，并使用深度强化学习（Deep Q-Network, DQN）训练智能体（Agent）自动玩游戏。项目采用纯 PyTorch 手写 DQN 算法，不依赖 stable_baselines3 等第三方 RL 库，便于理解算法原理，适合课程设计报告。
 
 **核心特性：**
-- 纯 PyTorch 手写 DQN（Policy Network + Target Network）
-- 经验回放（Experience Replay）
+- 纯 PyTorch 手写 DQN / Double DQN
+- 经验回放（Experience Replay）+ Warmup 预热
 - Epsilon-Greedy 探索策略
+- 17 维扩展状态（含 Flood Fill 可达空间）
+- 重复状态检测 + 动态步数限制
+- 定期评估 + Best Model 自动保存
 - Gymnasium 风格环境接口（自实现，不强制依赖 gymnasium）
-- 低维状态输入（11维特征向量）
 - CUDA 加速训练（自动检测 GPU）
 - 终端实时刷新游玩（Windows 使用 msvcrt，无需 pygame）
 - 方向键控制（人工游玩使用绝对方向，DQN 内部使用相对动作）
@@ -98,41 +100,61 @@ cd snake_rl
 # 快速测试 (50 episodes)
 python train.py --episodes 50
 
-# 标准训练 (1000 episodes)
-python train.py --episodes 1000
+# 推荐训练 (3000 episodes, Double DQN)
+python train.py --episodes 3000 --double-dqn
+
+# 禁用 Double DQN 对比实验
+python train.py --episodes 3000 --no-double-dqn
 
 # 自定义参数
-python train.py --episodes 2000 --seed 123 --save-path checkpoints/my_model.pt
+python train.py --episodes 2000 --lr 1e-3 --batch-size 64
 ```
 
 **命令行参数：**
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--episodes` | 1000 | 训练轮数 |
-| `--render` | False | 是否渲染（默认关闭，加 --render 会变慢） |
-| `--save-path` | checkpoints/dqn_snake.pt | 模型保存路径 |
+| `--episodes` | 3000 | 训练轮数 |
+| `--double-dqn` | True | 使用 Double DQN |
+| `--no-double-dqn` | - | 禁用 Double DQN |
+| `--lr` | 5e-4 | 学习率 |
+| `--batch-size` | 128 | 批量大小 |
+| `--replay-size` | 100000 | 回放缓冲区大小 |
+| `--target-update` | 500 | 目标网络更新间隔 |
+| `--epsilon-end` | 0.02 | 最终探索率 |
+| `--epsilon-decay` | 50000 | 探索率衰减步数 |
+| `--warmup-steps` | 1000 | 预热步数 |
+| `--eval-interval` | 100 | 评估间隔 (episodes) |
+| `--eval-episodes` | 20 | 评估局数 |
+| `--render` | False | 是否渲染（会变慢） |
+| `--save-path` | checkpoints/final_model.pt | 模型保存路径 |
 | `--seed` | 42 | 随机种子 |
 
-**注意：** 训练默认不渲染终端，保证训练速度。如需观察训练过程，可加 `--render` 参数，但会显著降低训练速度。
+**注意：**
+- 训练默认不渲染终端，保证训练速度
+- 每 `eval_interval` episodes 评估一次，自动保存 best_model.pt
+- Warmup 阶段只收集经验，不更新网络
 
 **训练输出示例：**
 ```
-Episode    10 | Score:   0 | Reward:   -10.01 | Eps: 0.9990 | Best:   0 | Avg50: 0.0
-Episode   100 | Score:   2 | Reward:    15.48 | Eps: 0.9900 | Best:   3 | Avg50: 1.2
-Episode   500 | Score:   8 | Reward:    72.31 | Eps: 0.9500 | Best:  12 | Avg50: 5.6
+Episode    10 | Score:   0 | Reward:   -10.01 | Eps: 0.9990 | Avg50:   0.0
+Episode   100 | Score:   2 | Reward:    15.48 | Eps: 0.9800 | Avg50:   1.2 | EvalAvg:   1.5 | EvalMax:   3
+Episode   500 | Score:   8 | Reward:    72.31 | Eps: 0.9000 | Avg50:   5.6 | EvalAvg:   6.2 | EvalMax:  12
 ```
 
 ## 8. 如何观看 Agent
 
 ```bash
-# 终端逐帧观看（推荐，实时刷新棋盘）
-python main.py --model checkpoints/dqn_snake.pt --episodes 5 --fps 10 --terminal-render
+# 观看最佳模型（推荐）
+python main.py --model checkpoints/best_model.pt --episodes 5 --fps 10 --terminal-render
+
+# 观看最终模型
+python main.py --model checkpoints/final_model.pt --episodes 5 --fps 10 --terminal-render
 
 # 终端摘要模式（仅 episode 结束后输出统计）
-python main.py --model checkpoints/dqn_snake.pt --episodes 5
+python main.py --model checkpoints/best_model.pt --episodes 5
 
 # 图形界面模式 (需 pygame)
-python main.py --model checkpoints/dqn_snake.pt --episodes 10 --fps 15
+python main.py --model checkpoints/best_model.pt --episodes 10 --fps 15
 ```
 
 **命令行参数：**
@@ -151,7 +173,7 @@ python main.py --model checkpoints/dqn_snake.pt --episodes 10 --fps 15
 
 ## 9. 状态空间设计
 
-状态为 **11 维二值特征向量**，无需图像输入，训练高效：
+状态为 **17 维特征向量**，包含危险感知、方向、食物位置、归一化特征和 Flood Fill 可达空间：
 
 | 索引 | 特征 | 含义 |
 |------|------|------|
@@ -166,11 +188,18 @@ python main.py --model checkpoints/dqn_snake.pt --episodes 10 --fps 15
 | 8 | food_right | 食物是否在右边 |
 | 9 | food_up | 食物是否在上方 |
 | 10 | food_down | 食物是否在下方 |
+| 11 | distance_to_food_normalized | 距食物曼哈顿距离 / 最大距离 |
+| 12 | snake_length_normalized | 蛇身长度 / 总格子数 |
+| 13 | steps_since_food_normalized | 未吃到食物步数 / 动态上限 |
+| 14 | free_space_straight | 直行后可达空间比例 |
+| 15 | free_space_left | 左转后可达空间比例 |
+| 16 | free_space_right | 右转后可达空间比例 |
 
-**设计理由：**
-- 低维状态，MLP 即可处理，无需 CNN
-- 特征工程合理，包含危险感知、方向、食物位置
-- 训练收敛快，适合课程设计演示
+**为什么从 11 维扩展到 17 维：**
+- 原 11 维缺少蛇身整体信息，agent 无法感知"蛇有多长"
+- 缺少可达空间信息，agent 无法识别死胡同
+- 缺少步数信息，agent 无法感知"已经绕圈多久"
+- Flood Fill 特征让 agent 能预判动作后果，避免进入死路
 
 ## 10. 动作空间设计
 
@@ -212,9 +241,25 @@ def absolute_direction_to_relative_action(current_direction, target_direction):
 | 吃到食物 | +10 | 正向激励 |
 | 撞墙/撞自己 | -10 | 负向惩罚 |
 | 普通移动 | -0.01 | 鼓励尽快找到食物 |
-| 离食物更近 | +0.1 | 引导向食物移动 |
-| 离食物更远 | -0.1 | 惩罚远离食物 |
-| 超过最大步数 | -5 | 防止无限绕圈 |
+| 离食物更近 | +0.02 | 轻微引导（降低以避免短视） |
+| 离食物更远 | -0.02 | 轻微惩罚 |
+| 重复状态（绕圈） | -0.2 | 检测到同一状态出现≥3次 |
+| 进入死胡同 | -0.5 | 可达空间 < 5% |
+| 超过动态步数限制 | -10 | max(100, 蛇长×20) 步未吃到食物 |
+
+**为什么降低距离奖励：**
+- 原 ±0.1 过强，agent 会"追着食物跑"但不会规划路径
+- 降低到 ±0.02 后，agent 更依赖 Flood Fill 特征做长期规划
+- 避免"局部最优"：只学会不死，没学会吃食物
+
+**为什么加入重复状态检测：**
+- 原版 agent 容易陷入"安全绕圈"模式
+- 检测 state_key = (head_pos, direction, food_pos) 的重复频率
+- 最近 100 步内同一状态出现 ≥3 次即判定为绕圈
+
+**为什么动态步数限制：**
+- 固定 1000 步对短蛇太宽松，对长蛇太严格
+- max(100, 蛇长×20) 让长蛇有更多时间找食物
 
 ## 12. DQN 原理简述
 
@@ -228,8 +273,24 @@ DQN（Deep Q-Network）是深度强化学习的经典算法，由 DeepMind 在 2
 2. **Target Network（目标网络）**：用于计算目标 Q 值，定期从 Policy Network 同步
 3. **Experience Replay（经验回放）**：打破数据相关性，提高样本效率
 4. **Epsilon-Greedy（ε-贪心）**：平衡探索与利用
+5. **Double DQN**：减少 Q 值过估计
 
-### 12.3 训练流程
+### 12.3 DQN vs Double DQN
+
+**标准 DQN 的问题：**
+```
+target = r + γ · max_a' Q(s', a'; θ⁻)
+```
+使用 target_network 选择并评估动作，容易高估 Q 值（过估计），导致训练不稳定。
+
+**Double DQN 的改进：**
+```
+a* = argmax_a' Q(s', a'; θ)        # policy_net 选动作
+target = r + γ · Q(s', a*; θ⁻)     # target_net 评估
+```
+用 policy_net 选择最优动作，用 target_net 评估该动作的 Q 值，分离"选择"和"评估"，减少过估计。
+
+### 12.4 训练流程
 
 ```
 初始化 Policy Network θ, Target Network θ⁻ = θ
@@ -239,25 +300,44 @@ For each episode:
         a = ε-greedy(Q(s,·; θ))     # 选择动作
         s', r, done = env.step(a)    # 执行动作
         Store (s,a,r,s',done) in Buffer  # 存储经验
-        Sample mini-batch from Buffer    # 采样
-        y = r + γ·max_a' Q(s',a';θ⁻)   # 计算目标
-        Loss = Huber(Q(s,a;θ), y)       # 计算损失
-        Update θ by gradient descent     # 更新网络
+        If len(Buffer) >= warmup_steps:  # 预热后开始训练
+            Sample mini-batch from Buffer
+            a* = argmax Q(s',·; θ)      # Double DQN: policy_net 选动作
+            y = r + γ · Q(s',a*;θ⁻)     # target_net 评估
+            Loss = Huber(Q(s,a;θ), y)
+            Update θ by gradient descent
         Every C steps: θ⁻ = θ           # 同步目标网络
+    Every eval_interval: evaluate & save best
 ```
 
-### 12.4 关键超参数
+### 12.5 关键超参数
 
 | 参数 | 值 | 说明 |
 |------|-----|------|
 | γ (gamma) | 0.99 | 折扣因子 |
-| lr | 1e-3 | 学习率 |
-| batch_size | 64 | 批量大小 |
-| replay_size | 50000 | 回放缓冲区大小 |
-| target_update | 1000 | 目标网络更新间隔 |
+| lr | 5e-4 | 学习率 |
+| batch_size | 128 | 批量大小 |
+| replay_size | 100000 | 回放缓冲区大小 |
+| target_update | 500 | 目标网络更新间隔 |
 | ε_start | 1.0 | 初始探索率 |
-| ε_end | 0.05 | 最终探索率 |
-| ε_decay_steps | 10000 | 探索率衰减步数 |
+| ε_end | 0.02 | 最终探索率 |
+| ε_decay_steps | 50000 | 探索率衰减步数 |
+| warmup_steps | 1000 | 预热步数 |
+
+### 12.6 为什么 Agent 会转圈（局部最优）
+
+1. **状态信息不足**：原 11 维状态缺少蛇身长度、可达空间等信息，agent 只能"看到眼前"
+2. **距离奖励过强**：±0.1 的距离奖励让 agent 追着食物跑，但不会规划路径
+3. **缺乏死胡同感知**：没有 Flood Fill，agent 无法预判"走进去出不来"
+4. **绕圈没有惩罚**：agent 发现"原地转圈不会死"后，会一直转圈
+5. **Q 值过估计**：标准 DQN 容易高估某些动作的 Q 值，导致策略固化
+
+**改进方案：**
+- 扩展状态到 17 维（含 Flood Fill）
+- 降低距离奖励到 ±0.02
+- 加入重复状态检测和惩罚
+- 使用 Double DQN 减少过估计
+- 定期评估 + 保存 best model
 
 ## 13. 可选安装（增强功能）
 
@@ -278,34 +358,38 @@ pip install gymnasium
 pip install stable-baselines3
 ```
 
-## 14. 后续优化方向
+## 14. 已实现的优化
+
+1. **Double DQN** ✅：减少 Q 值过估计，默认启用
+2. **Flood Fill 可达空间** ✅：检测死胡同，新增 3 维状态特征
+3. **扩展状态空间** ✅：从 11 维扩展到 17 维
+4. **重复状态检测** ✅：检测绕圈并给予惩罚
+5. **动态步数限制** ✅：max(100, 蛇长×20)
+6. **Best Model 保存** ✅：定期评估，保存最优模型
+7. **Warmup 预热** ✅：攒够经验后再训练
+8. **奖励函数优化** ✅：降低距离奖励，增加绕圈/死胡同惩罚
+
+## 15. 后续优化方向
 
 1. **算法升级**：
-   - Double DQN：减少 Q 值过估计
    - Dueling DQN：分离状态价值和动作优势
    - Prioritized Experience Replay：优先回放重要经验
    - NoisyNet：用噪声网络替代 ε-greedy
 
 2. **状态表示**：
    - 使用 CNN 处理游戏画面图像输入
-   - 增加蛇身长度、食物距离等特征
+   - 增加蛇尾位置、路径规划等特征
 
-3. **奖励工程**：
-   - 蛇身长度奖励
-   - 存活时间奖励
-   - 曲线路径惩罚
-
-4. **训练技巧**：
+3. **训练技巧**：
    - 学习率调度（Learning Rate Scheduling）
-   - 梯度裁剪调优
    - 更长的训练轮数（5000+ episodes）
+   - 多种子评估取平均
 
-5. **可视化**：
+4. **可视化**：
    - Matplotlib 绘制训练曲线
    - TensorBoard 日志
-   - Pygame 实时可视化
 
-6. **环境增强**：
+5. **环境增强**：
    - 可变网格大小
    - 多食物模式
    - 障碍物模式
