@@ -140,13 +140,26 @@ python train_sb3_dqn.py --timesteps 200000 --state-mode basic17
 
 ## 8. 如何观看 Agent
 
+### 观看手写 DQN 模型
+
 ```bash
-# 观看最佳模型（推荐）
+# 观看最佳模型
 python main.py --model checkpoints/best_model.pt --episodes 5 --fps 10 --terminal-render
 
 # 观看最终模型
 python main.py --model checkpoints/final_model.pt --episodes 5 --fps 10 --terminal-render
+```
 
+### 观看 SB3 DQN 模型
+
+```bash
+# 观看 SB3 模型
+python main.py --model checkpoints/sb3_dqn_snake.zip --model-type sb3 --episodes 5 --fps 10 --terminal-render --state-mode basic17
+```
+
+### 通用参数
+
+```bash
 # 终端摘要模式（仅 episode 结束后输出统计）
 python main.py --model checkpoints/best_model.pt --episodes 5
 
@@ -158,15 +171,17 @@ python main.py --model checkpoints/best_model.pt --episodes 10 --fps 15
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--model` | checkpoints/dqn_snake.pt | 模型路径 |
+| `--model-type` | auto | 模型类型 (auto/torch/sb3) |
 | `--episodes` | 5 | 观看局数 |
 | `--grid-size` | 20 | 网格大小 |
 | `--fps` | 10 | 帧率 |
 | `--terminal-render` | False | 终端逐帧渲染 |
+| `--state-mode` | basic17 | 状态模式 |
 
 **说明：**
+- `--model-type auto` 会根据文件扩展名自动识别：`.pt` 用手写 DQN，`.zip` 用 SB3
 - 使用 `--terminal-render` 时，每一步都显示棋盘，按 `Q` 可退出
 - 不使用 `--terminal-render` 时，仅在 episode 结束后输出统计信息
-- 训练时默认不渲染，保证训练速度
 
 ## 9. 状态空间设计
 

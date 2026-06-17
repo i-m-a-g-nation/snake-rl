@@ -36,6 +36,7 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
     # 创建环境
     env = SnakeEnv(grid_size=grid_size, seed=seed, state_mode=state_mode)
 
+    print(f"状态模式: {state_mode}")
     print(f"评估局数: {episodes}")
     print("-" * 60)
 
@@ -82,6 +83,7 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
     # 统计
     avg_score = np.mean(scores)
     max_score = max(scores)
+    min_score = min(scores)
     avg_steps = np.mean(steps_list)
     total = episodes
 
@@ -96,6 +98,7 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
     print(f"{'=' * 60}")
     print(f"  平均得分:     {avg_score:.2f}")
     print(f"  最高得分:     {max_score}")
+    print(f"  最低得分:     {min_score}")
     print(f"  平均步数:     {avg_steps:.1f}")
     print()
     print(f"  撞墙次数:     {death_counts['wall_collision']}  ({wall_rate:.1f}%)")
@@ -134,6 +137,7 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
     return {
         "avg_score": avg_score,
         "max_score": max_score,
+        "min_score": min_score,
         "avg_steps": avg_steps,
         "death_counts": death_counts,
         "rates": rates,

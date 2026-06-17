@@ -12,17 +12,27 @@ try:
 except ImportError:
     HAS_GYM = False
 
+# 根据是否有 gymnasium 决定基类
+if HAS_GYM:
+    _BaseEnv = gym.Env
+else:
+    _BaseEnv = object
 
-class SnakeEnv:
+
+class SnakeEnv(_BaseEnv):
     """
     Gymnasium 风格的 Snake 环境。
-    即使没有 gymnasium 库，也提供 reset/step/render/close 接口。
+    如果 gymnasium 已安装，则继承 gym.Env；否则自实现同名接口。
     """
 
-    def __init__(self, grid_size: int = 20, seed: int = None, state_mode: str = "basic17"):
+    metadata = {"render_modes": ["human"]}
+
+    def __init__(self, grid_size: int = 20, seed: int = None, state_mode: str = "basic17", render_mode=None):
+        super().__init__()
         self.grid_size = grid_size
         self.seed_val = seed
         self.state_mode = state_mode
+        self.render_mode = render_mode
         self.game = SnakeGame(grid_size=grid_size, seed=seed)
         self.steps_since_food = 0
         self.prev_distance = 0.0
@@ -65,11 +75,14 @@ class SnakeEnv:
         head = self.game.snake[0]
         return (head, self.game.direction, self.game.food)
 
-    def step(self, action: int):
+    def step(self, action):
         """
         执行一步动作。
         返回: (observation, reward, terminated, truncated, info)
         """
+        # 确保 action 是 Python int
+        action = int(action)
+
         old_distance = self.prev_distance
 
         result = self.game.step(action)
@@ -135,6 +148,10 @@ class SnakeEnv:
             "repeat_penalty": repeat_penalty,
             "death_reason": death_reason,
         }
+
+        if self.render_mode == "human":
+            self.render()
+
         return obs, reward, terminated, truncated, info
 
     def render(self):
