@@ -74,6 +74,12 @@ def train(args):
         n_step=args.n_step,
     )
 
+    # 加载预训练模型
+    if args.load_model and os.path.exists(args.load_model):
+        print(f"加载预训练模型: {args.load_model}")
+        agent.load(args.load_model)
+        print(f"  预训练步数: {agent.train_step_count}")
+
     print(f"设备: {agent.device}")
     print(f"状态维度: {state_dim}, 动作维度: {action_dim}")
     print(f"Double DQN: {args.double_dqn}")
@@ -222,6 +228,8 @@ if __name__ == "__main__":
     parser.add_argument("--episodes", type=int, default=3000, help="训练轮数")
     parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23", "grid"], help="状态模式")
     parser.add_argument("--seed", type=int, default=42, help="随机种子")
+    parser.add_argument("--load-model", type=str, default=None, help="加载预训练模型")
+    parser.add_argument("--run-name", type=str, default=None, help="运行名称")
     # DQN 参数
     parser.add_argument("--double-dqn", action="store_true", default=True, help="使用 Double DQN")
     parser.add_argument("--no-double-dqn", dest="double_dqn", action="store_false", help="禁用 Double DQN")
