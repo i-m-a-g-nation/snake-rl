@@ -63,6 +63,7 @@ def train(args):
         epsilon_decay_steps=args.epsilon_decay,
         use_double_dqn=args.double_dqn,
         use_dueling=args.dueling,
+        use_noisy_net=args.noisy_net,
         use_action_mask=args.action_mask,
         use_per=args.per,
         per_alpha=args.per_alpha,
@@ -76,6 +77,7 @@ def train(args):
     print(f"状态维度: {state_dim}, 动作维度: {action_dim}")
     print(f"Double DQN: {args.double_dqn}")
     print(f"Dueling: {args.dueling}")
+    print(f"NoisyNet: {args.noisy_net}")
     print(f"Action Mask: {args.action_mask}")
     print(f"PER: {args.per}")
     print(f"N-step: {args.n_step}")
@@ -222,6 +224,7 @@ if __name__ == "__main__":
     parser.add_argument("--double-dqn", action="store_true", default=True, help="使用 Double DQN")
     parser.add_argument("--no-double-dqn", dest="double_dqn", action="store_false", help="禁用 Double DQN")
     parser.add_argument("--dueling", action="store_true", default=False, help="使用 Dueling DQN")
+    parser.add_argument("--noisy-net", action="store_true", default=False, help="使用 NoisyNet")
     parser.add_argument("--action-mask", action="store_true", default=False, help="使用 Action Mask")
     parser.add_argument("--per", action="store_true", default=False, help="使用 Prioritized Experience Replay")
     parser.add_argument("--n-step", type=int, default=1, help="N-step return")

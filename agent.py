@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from models import DQN, DuelingDQN
+from models import DQN, DuelingDQN, NoisyDuelingDQN
 from replay_buffer import ReplayBuffer
 from prioritized_replay_buffer import PrioritizedReplayBuffer
 from n_step_buffer import NStepBuffer
@@ -32,6 +32,7 @@ class DQNAgent:
         epsilon_decay_steps: int = 100000,
         use_double_dqn: bool = True,
         use_dueling: bool = False,
+        use_noisy_net: bool = False,
         use_action_mask: bool = False,
         use_per: bool = False,
         per_alpha: float = 0.6,
@@ -56,6 +57,7 @@ class DQNAgent:
         self.epsilon_decay_steps = epsilon_decay_steps
         self.use_double_dqn = use_double_dqn
         self.use_dueling = use_dueling
+        self.use_noisy_net = use_noisy_net
         self.use_action_mask = use_action_mask
         self.use_per = use_per
         self.per_beta_start = per_beta_start
@@ -64,7 +66,10 @@ class DQNAgent:
         self.n_step = n_step
 
         # 网络
-        if use_dueling:
+        if use_noisy_net:
+            self.policy_net = NoisyDuelingDQN(state_dim, action_dim, hidden_dim).to(self.device)
+            self.target_net = NoisyDuelingDQN(state_dim, action_dim, hidden_dim).to(self.device)
+        elif use_dueling:
             self.policy_net = DuelingDQN(state_dim, action_dim, hidden_dim).to(self.device)
             self.target_net = DuelingDQN(state_dim, action_dim, hidden_dim).to(self.device)
         else:
