@@ -488,18 +488,39 @@ python main.py --model checkpoints/sb3_best/best_model.zip --model-type sb3 --ep
 
 | 方法 | 训练量 | 平均分 | 最高分 | 撞墙% | 撞自己% | 超时% | 备注 |
 |------|--------|--------|--------|-------|---------|-------|------|
-| hand_dqn_basic17_best | 3000 episodes | 1.38 | 13 | 63.3 | 29.6 | 7.1 | 手写 Double DQN |
-| sb3_dqn_basic17_200k | 200000 timesteps | 3.95 | 18 | 33.0 | 37.0 | 30.0 | **推荐 SB3 模型** |
+| hand_dqn_basic17 | 500 episodes | **23.93** | **57** | 22.0 | 78.0 | 0.0 | **最强模型** |
+| sb3_dqn_basic17_200k | 200000 timesteps | 4.40 | 14 | 25.0 | 60.0 | 15.0 | SB3 baseline |
 | sb3_dqn_basic17_500k_continue | 500000 timesteps | 1.54 | 4 | 71.0 | 29.0 | 0.0 | degraded |
 
-**分析：**
-- SB3 200k 效果最好，平均分 3.95，最高分 18
-- 500k 继续训练反而变差（灾难性遗忘）
-- 手写 DQN 3000 episodes 效果一般，但超时率低
-
 **结论：**
-- 200000 timesteps 是当前最佳训练量
-- 推荐使用 `checkpoints/sb3_best/best_model.zip`
+- **手写 Double DQN 是当前最强 agent**，avg=23.93, max=57
+- SB3 DQN 作为标准库 baseline，avg=4.40
+- 500k continue 训练失败，说明 RL 训练不是单调提升
+
+## 18. 当前模型推荐
+
+### 最强模型：手写 Double DQN
+```
+checkpoints/best_model_basic17.pt
+avg_score = 23.93
+max_score = 57
+```
+
+### 推荐观看命令
+```bash
+python main.py --model checkpoints/best_model_basic17.pt --model-type torch --episodes 5 --fps 10 --terminal-render --state-mode basic17
+```
+
+### 推荐评估命令
+```bash
+python evaluate_torch.py --model checkpoints/best_model_basic17.pt --episodes 100 --state-mode basic17
+```
+
+### 学习建议
+- **如果想看较好 agent**：优先看手写 DQN best_model_basic17.pt
+- **如果想学成熟库训练流程**：看 SB3 DQN
+- **如果想学 DQN 原理**：看手写 agent.py / replay_buffer.py / models.py
+- **SB3 500k continue 是失败实验**：说明 RL 训练不是单调提升
 
 ## 18. 为什么 500k Continue Training 变差
 

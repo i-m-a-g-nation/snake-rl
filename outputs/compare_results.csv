@@ -1,4 +1,4 @@
-method,training_unit,training_amount,avg_score,max_score,min_score,avg_steps,wall_collision_rate,self_collision_rate,timeout_rate,notes
-hand_dqn_basic17_best,episodes,3000,1.38,13,0,0.0,63.3,29.6,7.1,手写 Double DQN
-sb3_dqn_basic17_200k,timesteps,200000,3.95,18,1,123.4,33.0,37.0,30.0,SB3 DQN 200k timesteps
-sb3_dqn_basic17_500k_continue,timesteps,500000,1.54,4,0,21.4,71.0,29.0,0.0,SB3 DQN 从 200k best 继续训练
+method,model_path,avg_score,max_score,min_score,avg_steps,wall_collision_rate,self_collision_rate,timeout_rate,notes
+hand_dqn_basic17,checkpoints/best_model.pt,23.93,57,2,348.8,22.0,78.0,0.0,hand_written_double_dqn
+sb3_dqn_basic17_200k,checkpoints/sb3_best/best_model.zip,4.4,14,1,121.4,25.0,60.0,15.0,recommended_sb3_model
+sb3_eval.csv,checkpoints/sb3_runs/sb3_eval.csv/best_model/best_model.zip,1.54,4,0,21.4,71.0,29.0,0.0,sb3_run
