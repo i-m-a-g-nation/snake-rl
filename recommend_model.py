@@ -45,18 +45,25 @@ def recommend():
     # 检查各个模型
     checks = [
         {
-            "name": "Hand-written DQN best",
-            "path": "checkpoints/best_model.pt",
+            "name": "Hand-written DQN basic17 best",
+            "path": "checkpoints/best_model_basic17.pt",
             "eval_path": "logs/torch_eval.csv",
             "type": "torch",
-            "notes": "hand_written_double_dqn",
+            "notes": "best_overall",
+        },
+        {
+            "name": "Hand-written DQN reachable23",
+            "path": "checkpoints/best_model.pt",
+            "eval_path": None,
+            "type": "torch",
+            "notes": "reachable23_experiment",
         },
         {
             "name": "SB3 200k best",
             "path": "checkpoints/sb3_best/best_model.zip",
             "eval_path": "logs/sb3_eval.csv",
             "type": "sb3",
-            "notes": "recommended_sb3_model",
+            "notes": "sb3_baseline",
         },
         {
             "name": "SB3 500k continue",

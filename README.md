@@ -1,5 +1,15 @@
 # Snake 贪吃蛇强化学习项目
 
+## 当前推荐
+
+| 目标 | 模型 | 评分 | 命令 |
+|------|------|------|------|
+| **最强 Agent** | hand-written Double DQN basic17 | avg=23.93, max=57 | `python main.py --model checkpoints/best_model_basic17.pt --model-type torch --episodes 5 --fps 10 --terminal-render --state-mode basic17` |
+| 标准库 Baseline | SB3 DQN 200k best | avg=4.40, max=14 | `python main.py --model checkpoints/sb3_best/best_model.zip --model-type sb3 --episodes 5 --fps 10 --terminal-render --state-mode basic17` |
+| ~~退化实验~~ | SB3 500k continue | avg=1.54, max=4 | 不推荐使用 |
+
+**结论：** 手写 Double DQN 显著优于 SB3 vanilla DQN。
+
 ## 1. 项目简介
 
 本项目实现了一个经典的贪吃蛇（Snake）游戏，并使用深度强化学习（Deep Q-Network, DQN）训练智能体（Agent）自动玩游戏。项目提供两种训练方式：
@@ -619,44 +629,80 @@ python main.py ^
 
 **注意：** 继续训练可能导致灾难性遗忘，效果不一定更好。建议先用 200k 模型。
 
-## 19. 后续优化方向
+## 20. 最终实验结论
 
-1. **算法升级**：
-   - Dueling DQN：分离状态价值和动作优势
-   - Prioritized Experience Replay：优先回放重要经验
-   - NoisyNet：用噪声网络替代 ε-greedy
+### 手写 Double DQN vs SB3 DQN
 
-2. **状态表示**：
-   - 使用 CNN 处理游戏画面图像输入
-   - 增加蛇尾位置、路径规划等特征
+| 方法 | 训练量 | 平均分 | 最高分 | 说明 |
+|------|--------|--------|--------|------|
+| **手写 Double DQN** | 500 episodes | **23.93** | **57** | 最强 agent |
+| SB3 vanilla DQN | 200k timesteps | 4.40 | 14 | 标准库 baseline |
+| SB3 500k continue | 500k timesteps | 1.54 | 4 | 退化实验 |
 
-3. **训练技巧**：
-   - 学习率调度（Learning Rate Scheduling）
-   - 更长的训练轮数（5000+ episodes）
-   - 多种子评估取平均
+### 为什么手写 DQN 更强
 
-4. **可视化**：
-   - Matplotlib 绘制训练曲线
-   - TensorBoard 日志
+1. **Double DQN**：分离动作选择和评估，减少 Q 值过估计
+2. **更好的状态表示**：17 维特征包含 flood fill 可达空间
+3. **定制奖励函数**：绕圈惩罚、死胡同检测、动态步数限制
+4. **更长训练**：500 episodes vs SB3 的 200k timesteps（约 1000+ episodes）
 
-5. **环境增强**：
-   - 可变网格大小
-   - 多食物模式
-   - 障碍物模式
+### 为什么 SB3 DQN 较弱
 
-## 20. 学习路线
+1. **Vanilla DQN**：SB3 默认不使用 Double DQN
+2. **通用超参数**：未针对 Snake 环境调优
+3. **训练时间**：200k timesteps 可能不够
+
+### 为什么 500k Continue 失败
+
+1. **灾难性遗忘**：继续训练覆盖已有知识
+2. **Replay Buffer 丢失**：best_model 不含 replay buffer
+3. **探索分布改变**：新超参数破坏策略
+
+### 关键教训
+
+- **Best checkpoint 比 final checkpoint 更可靠**
+- **RL 训练不是单调提升**，可能震荡
+- **Double DQN 显著优于 vanilla DQN**
+- **状态工程很重要**，flood fill 特征帮助 agent 规划
+
+## 21. 学习路线
 
 建议按以下顺序学习本项目：
 
-### 第一步：理解 SnakeEnv
-- 阅读 `snake_env.py`，理解状态空间、动作空间、奖励函数
-- 运行 `python play_human.py`，手动玩几局，感受游戏机制
+### 第一步：理解环境
+- 阅读 `snake_env.py`，理解 state/action/reward/terminated/truncated
+- 运行 `python play_human.py`，手动玩几局
 
-### 第二步：理解手写 DQN
-- 阅读 `models.py`，理解 Q 网络结构
-- 阅读 `replay_buffer.py`，理解经验回放
-- 阅读 `agent.py`，理解 DQN 算法（policy network、target network、epsilon-greedy）
-- 运行 `python train.py --episodes 100`，观察训练过程
+### 第二步：理解经验回放
+- 阅读 `replay_buffer.py`，理解经验回放机制
+
+### 第三步：理解 Q 网络
+- 阅读 `models.py`，理解 MLP Q 网络结构
+
+### 第四步：理解 DQN 算法
+- 阅读 `agent.py`，理解 epsilon-greedy、target network、Double DQN
+
+### 第五步：理解训练循环
+- 阅读 `train.py`，理解 evaluate_agent、best model 保存
+
+### 第六步：理解成熟库训练
+- 阅读 `train_sb3_dqn.py`，理解 EvalCallback、Monitor、CheckpointCallback
+
+### 第七步：理解客观评估
+- 运行 `python compare_results.py` 和 `python recommend_model.py`
+- 理解如何公平对比不同方法
+
+## 22. 后续优化方向
+
+如果需要继续改进，可以尝试：
+
+1. **Dueling DQN**：分离状态价值和动作优势
+2. **Prioritized Experience Replay**：优先回放重要经验
+3. **QR-DQN / Rainbow**：更高级的 DQN 变体
+4. **更长训练**：1000+ episodes
+5. **超参数调优**：学习率、探索率衰减
+
+**注意：** 这些不是当前必要任务，当前手写 Double DQN 已经足够好。
 
 ### 第三步：对比 SB3 DQN
 - 安装 `pip install stable-baselines3`
