@@ -42,58 +42,109 @@ def load_eval_results(csv_path: str):
     }
 
 
+def load_multiseed_results(csv_path: str):
+    """加载多 seed 评估 CSV，返回统计信息。"""
+    if not os.path.exists(csv_path):
+        return None
+
+    scores = []
+    with open(csv_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            scores.append(float(row["avg_score"]))
+
+    if not scores:
+        return None
+
+    return {
+        "mean_avg_score": round(np.mean(scores), 2),
+        "std_avg_score": round(np.std(scores), 2),
+        "mean_max_score": round(np.mean([float(row["max_score"]) for row in csv.DictReader(open(csv_path, "r", encoding="utf-8"))]), 1),
+    }
+
+
 def compare():
     """对比不同方法的结果。"""
     ensure_dir("outputs")
 
     results = []
 
-    # 手写 DQN
-    torch_path = "logs/torch_eval.csv"
-    torch_stats = load_eval_results(torch_path)
-    if torch_stats:
+    # 旧最佳模型
+    old_path = "logs/torch_eval.csv"
+    old_stats = load_eval_results(old_path)
+    if old_stats:
         results.append({
-            "method": "hand_dqn_basic17",
-            "model_path": "checkpoints/best_model.pt",
-            **torch_stats,
-            "notes": "hand_written_double_dqn",
+            "method": "old_best_basic17",
+            "model_path": "checkpoints/best_model_basic17.pt",
+            **old_stats,
+            "notes": "old_stable_model",
+        })
+
+    # Baseline current retrain
+    baseline_path = "logs/ablation/baseline_current/eval.csv"
+    baseline_stats = load_eval_results(baseline_path)
+    if baseline_stats:
+        results.append({
+            "method": "baseline_current_retrain",
+            "model_path": "checkpoints/ablation/baseline_current/best_model.pt",
+            **baseline_stats,
+            "notes": "double_dqn_retrain",
+        })
+
+    # Mask only
+    mask_path = "logs/ablation/mask_only/eval.csv"
+    mask_stats = load_eval_results(mask_path)
+    if mask_stats:
+        results.append({
+            "method": "mask_only",
+            "model_path": "checkpoints/ablation/mask_only/best_model.pt",
+            **mask_stats,
+            "notes": "action_mask_harmful",
+        })
+
+    # Mask dueling
+    mask_dueling_path = "logs/ablation/mask_dueling/eval.csv"
+    mask_dueling_stats = load_eval_results(mask_dueling_path)
+    if mask_dueling_stats:
+        results.append({
+            "method": "mask_dueling",
+            "model_path": "checkpoints/ablation/mask_dueling/best_model.pt",
+            **mask_dueling_stats,
+            "notes": "mask_dueling_mixed",
+        })
+
+    # Dueling only
+    dueling_path = "logs/ablation/dueling_only/eval.csv"
+    dueling_stats = load_eval_results(dueling_path)
+    if dueling_stats:
+        results.append({
+            "method": "dueling_only",
+            "model_path": "checkpoints/ablation/dueling_only/best_model.pt",
+            **dueling_stats,
+            "notes": "dueling_without_mask",
         })
 
     # SB3 200k
-    sb3_200k_path = "logs/sb3_eval.csv"
-    sb3_200k_stats = load_eval_results(sb3_200k_path)
-    if sb3_200k_stats:
+    sb3_path = "logs/sb3_eval.csv"
+    sb3_stats = load_eval_results(sb3_path)
+    if sb3_stats:
         results.append({
-            "method": "sb3_dqn_basic17_200k",
+            "method": "sb3_dqn_200k",
             "model_path": "checkpoints/sb3_best/best_model.zip",
-            **sb3_200k_stats,
-            "notes": "recommended_sb3_model",
+            **sb3_stats,
+            "notes": "sb3_baseline",
         })
 
-    # 查找所有 sb3_runs 目录下的评估结果
-    sb3_run_dirs = glob.glob("logs/sb3_runs/*/sb3_eval.csv")
-    for run_eval_path in sb3_run_dirs:
-        run_stats = load_eval_results(run_eval_path)
-        if run_stats:
-            # 从路径提取 run 名称
-            parts = run_eval_path.split(os.sep)
-            run_name = parts[2] if len(parts) > 2 else "unknown"
-
-            # 判断是否是 degraded
-            notes = "sb3_run"
-            if "continue" in run_name:
-                notes = "degraded_after_continue_training"
-
-            model_path = f"checkpoints/sb3_runs/{run_name}/best_model.zip"
-            if not os.path.exists(model_path):
-                model_path = f"checkpoints/sb3_runs/{run_name}/best_model/best_model.zip"
-
-            results.append({
-                "method": run_name,
-                "model_path": model_path,
-                **run_stats,
-                "notes": notes,
-            })
+    # SB3 500k continue
+    sb3_500k_path = "logs/sb3_runs/sb3_dqn_basic17_500k_continue/sb3_eval.csv"
+    sb3_500k_stats = load_eval_results(sb3_500k_path)
+    if sb3_500k_stats:
+        results.append({
+            "method": "sb3_dqn_500k_continue",
+            "model_path": "checkpoints/sb3_runs/sb3_dqn_basic17_500k_continue/best_model/best_model.zip",
+            **sb3_500k_stats,
+            "notes": "degraded_continue_training",
+        })
 
     if not results:
         print("没有找到评估结果。请先运行训练和评估。")
@@ -106,10 +157,10 @@ def compare():
     print(f"\n{'=' * 100}")
     print("训练结果对比")
     print(f"{'=' * 100}")
-    print(f"{'方法':<40} {'平均分':<10} {'最高分':<10} {'撞墙%':<10} {'撞自己%':<12} {'超时%':<10} {'备注'}")
+    print(f"{'方法':<35} {'平均分':<10} {'最高分':<10} {'撞墙%':<10} {'撞自己%':<12} {'超时%':<10} {'备注'}")
     print("-" * 100)
     for r in results:
-        print(f"{r['method']:<40} {r['avg_score']:<10} {r['max_score']:<10} "
+        print(f"{r['method']:<35} {r['avg_score']:<10} {r['max_score']:<10} "
               f"{r['wall_collision_rate']:<10} {r['self_collision_rate']:<12} "
               f"{r['timeout_rate']:<10} {r['notes']}")
     print(f"{'=' * 100}")

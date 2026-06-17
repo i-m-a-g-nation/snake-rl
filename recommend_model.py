@@ -10,27 +10,39 @@ def load_eval_results(csv_path: str):
         return None
 
     scores = []
-    death_counts = {"wall_collision": 0, "self_collision": 0, "no_food_timeout": 0}
-
     with open(csv_path, "r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
             scores.append(int(row["score"]))
-            reason = row.get("death_reason", "unknown")
-            if reason in death_counts:
-                death_counts[reason] += 1
 
-    total = len(scores)
     if not scores:
         return None
 
     return {
         "avg_score": round(sum(scores) / len(scores), 2),
         "max_score": max(scores),
-        "count": total,
-        "wall_collision_rate": round(death_counts["wall_collision"] / total * 100, 1),
-        "self_collision_rate": round(death_counts["self_collision"] / total * 100, 1),
-        "timeout_rate": round(death_counts["no_food_timeout"] / total * 100, 1),
+        "count": len(scores),
+    }
+
+
+def load_multiseed_results(csv_path: str):
+    """加载多 seed 评估 CSV。"""
+    if not os.path.exists(csv_path):
+        return None
+
+    scores = []
+    with open(csv_path, "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            scores.append(float(row["avg_score"]))
+
+    if not scores:
+        return None
+
+    import numpy as np
+    return {
+        "mean_avg_score": round(float(np.mean(scores)), 2),
+        "std_avg_score": round(float(np.std(scores)), 2),
     }
 
 
@@ -42,46 +54,51 @@ def recommend():
 
     models = []
 
-    # 检查各个模型
     checks = [
         {
-            "name": "Hand-written DQN basic17 best",
+            "name": "Old Best (basic17)",
             "path": "checkpoints/best_model_basic17.pt",
             "eval_path": "logs/torch_eval.csv",
+            "multiseed_path": None,
             "type": "torch",
-            "notes": "best_overall",
+            "notes": "old_stable_model",
         },
         {
-            "name": "Hand-written DQN reachable23",
-            "path": "checkpoints/best_model.pt",
-            "eval_path": None,
+            "name": "Dueling Only (new candidate)",
+            "path": "checkpoints/ablation/dueling_only/best_model.pt",
+            "eval_path": "logs/ablation/dueling_only/eval.csv",
+            "multiseed_path": "logs/ablation/dueling_only/multiseed_eval.csv",
             "type": "torch",
-            "notes": "reachable23_experiment",
+            "notes": "current_best_candidate",
         },
         {
-            "name": "SB3 200k best",
+            "name": "Baseline Current",
+            "path": "checkpoints/ablation/baseline_current/best_model.pt",
+            "eval_path": "logs/ablation/baseline_current/eval.csv",
+            "multiseed_path": None,
+            "type": "torch",
+            "notes": "double_dqn_retrain",
+        },
+        {
+            "name": "SB3 200k",
             "path": "checkpoints/sb3_best/best_model.zip",
             "eval_path": "logs/sb3_eval.csv",
+            "multiseed_path": None,
             "type": "sb3",
             "notes": "sb3_baseline",
-        },
-        {
-            "name": "SB3 500k continue",
-            "path": "checkpoints/sb3_runs/sb3_dqn_basic17_500k_continue/best_model/best_model.zip",
-            "eval_path": "logs/sb3_runs/sb3_dqn_basic17_500k_continue/sb3_eval.csv",
-            "type": "sb3",
-            "notes": "degraded_after_continue_training",
         },
     ]
 
     for check in checks:
         if os.path.exists(check["path"]):
             stats = load_eval_results(check["eval_path"]) if check["eval_path"] else None
+            multiseed = load_multiseed_results(check["multiseed_path"]) if check["multiseed_path"] else None
             models.append({
                 "name": check["name"],
                 "path": check["path"],
                 "type": check["type"],
                 "stats": stats,
+                "multiseed": multiseed,
                 "notes": check["notes"],
             })
 
@@ -89,15 +106,9 @@ def recommend():
         print("\n没有找到任何模型。请先运行训练。")
         return
 
-    # 分类
-    torch_models = [m for m in models if m["type"] == "torch" and m["stats"]]
-    sb3_models = [m for m in models if m["type"] == "sb3" and m["stats"]]
-    all_scored = [m for m in models if m["stats"]]
-
     # 按 avg_score 排序
-    all_scored.sort(key=lambda x: x["stats"]["avg_score"], reverse=True)
-    torch_models.sort(key=lambda x: x["stats"]["avg_score"], reverse=True)
-    sb3_models.sort(key=lambda x: x["stats"]["avg_score"], reverse=True)
+    scored = [m for m in models if m["stats"]]
+    scored.sort(key=lambda x: x["stats"]["avg_score"], reverse=True)
 
     # 输出所有模型
     print("\n所有模型:")
@@ -108,9 +119,12 @@ def recommend():
             score_str = f"avg={m['stats']['avg_score']}, max={m['stats']['max_score']}"
         else:
             score_str = "无评估数据"
+        ms_str = ""
+        if m["multiseed"]:
+            ms_str = f" | multiseed: {m['multiseed']['mean_avg_score']} +/- {m['multiseed']['std_avg_score']}"
         print(f"  {status} {m['name']}")
         print(f"     路径: {m['path']}")
-        print(f"     评分: {score_str}")
+        print(f"     评分: {score_str}{ms_str}")
         print(f"     备注: {m['notes']}")
         print()
 
@@ -119,53 +133,36 @@ def recommend():
     print("推荐:")
     print("=" * 70)
 
-    # 最佳手写 DQN
-    if torch_models:
-        best_torch = torch_models[0]
-        print(f"\n最佳手写 DQN: {best_torch['name']}")
-        print(f"  路径: {best_torch['path']}")
-        print(f"  评分: avg={best_torch['stats']['avg_score']}, max={best_torch['stats']['max_score']}")
+    # 找最佳模型
+    if scored:
+        best = scored[0]
+        print(f"\n当前最强模型: {best['name']}")
+        print(f"  路径: {best['path']}")
+        print(f"  评分: avg={best['stats']['avg_score']}, max={best['stats']['max_score']}")
+        if best["multiseed"]:
+            print(f"  多 Seed: {best['multiseed']['mean_avg_score']} +/- {best['multiseed']['std_avg_score']}")
 
-    # 最佳 SB3
-    if sb3_models:
-        # 排除 degraded
-        good_sb3 = [m for m in sb3_models if "degraded" not in m["notes"]]
-        if good_sb3:
-            best_sb3 = good_sb3[0]
-        else:
-            best_sb3 = sb3_models[0]
-        print(f"\n最佳 SB3 DQN: {best_sb3['name']}")
-        print(f"  路径: {best_sb3['path']}")
-        print(f"  评分: avg={best_sb3['stats']['avg_score']}, max={best_sb3['stats']['max_score']}")
-        if "degraded" in best_sb3["notes"]:
-            print(f"  注意: 此模型已标记为 degraded")
+        # 判断是否超过旧模型
+        old_model = next((m for m in models if m["notes"] == "old_stable_model"), None)
+        if old_model and old_model["stats"]:
+            if best["stats"]["avg_score"] > old_model["stats"]["avg_score"]:
+                print(f"\n超过旧模型! ({old_model['stats']['avg_score']} -> {best['stats']['avg_score']})")
 
-    # 总体推荐
-    if all_scored:
-        best_overall = all_scored[0]
-        print(f"\n{'=' * 70}")
-        print(f"总体推荐: {best_overall['name']}")
-        print(f"  路径: {best_overall['path']}")
-        print(f"  评分: avg={best_overall['stats']['avg_score']}, max={best_overall['stats']['max_score']}")
+                # 复制为推荐模型
+                import shutil
+                recommend_path = "checkpoints/best_model_basic17_v2_candidate.pt"
+                if not os.path.exists(recommend_path):
+                    shutil.copy2(best["path"], recommend_path)
+                    print(f"已复制到: {recommend_path}")
 
-        # 判断哪个更强
-        if torch_models and sb3_models:
-            best_torch_score = torch_models[0]["stats"]["avg_score"]
-            good_sb3 = [m for m in sb3_models if "degraded" not in m["notes"]]
-            best_sb3_score = good_sb3[0]["stats"]["avg_score"] if good_sb3 else 0
-
-            print(f"\n{'=' * 70}")
-            if best_torch_score > best_sb3_score:
-                print("当前最强 agent 是手写 Double DQN，不是 SB3 DQN。")
-                print("SB3 DQN 保留为标准库 baseline。")
+                model_type = "torch" if best["type"] == "torch" else "sb3"
+                print(f"\n推荐观看命令:")
+                print(f"  python main.py --model {recommend_path} --model-type {model_type} --episodes 5 --fps 10 --terminal-render --state-mode basic17")
             else:
-                print("当前最强 agent 是 SB3 DQN。")
-                print("手写 DQN 用于学习算法原理。")
-
-        # 推荐观看命令
-        model_type = "sb3" if best_overall["type"] == "sb3" else "torch"
-        print(f"\n推荐观看命令:")
-        print(f"  python main.py --model {best_overall['path']} --model-type {model_type} --episodes 5 --fps 10 --terminal-render --state-mode basic17")
+                print(f"\n未超过旧模型 ({old_model['stats']['avg_score']})")
+                print(f"继续推荐: {old_model['path']}")
+                print(f"\n推荐观看命令:")
+                print(f"  python main.py --model {old_model['path']} --model-type torch --episodes 5 --fps 10 --terminal-render --state-mode basic17")
 
     print(f"\n{'=' * 70}")
 

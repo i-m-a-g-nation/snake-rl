@@ -1,4 +1,8 @@
 method,model_path,avg_score,max_score,min_score,avg_steps,wall_collision_rate,self_collision_rate,timeout_rate,notes
-hand_dqn_basic17,checkpoints/best_model.pt,23.93,57,2,348.8,22.0,78.0,0.0,hand_written_double_dqn
-sb3_dqn_basic17_200k,checkpoints/sb3_best/best_model.zip,4.4,14,1,121.4,25.0,60.0,15.0,recommended_sb3_model
-sb3_eval.csv,checkpoints/sb3_runs/sb3_eval.csv/best_model/best_model.zip,1.54,4,0,21.4,71.0,29.0,0.0,sb3_run
+old_best_basic17,checkpoints/best_model_basic17.pt,35.36,55,3,558.4,0.0,100.0,0.0,old_stable_model
+dueling_only,checkpoints/ablation/dueling_only/best_model.pt,34.48,67,7,535.2,5.0,95.0,0.0,dueling_without_mask
+baseline_current_retrain,checkpoints/ablation/baseline_current/best_model.pt,30.27,66,6,457.0,5.0,95.0,0.0,double_dqn_retrain
+mask_dueling,checkpoints/ablation/mask_dueling/best_model.pt,16.14,36,1,222.0,3.0,97.0,0.0,mask_dueling_mixed
+sb3_dqn_200k,checkpoints/sb3_best/best_model.zip,4.4,14,1,121.4,25.0,60.0,15.0,sb3_baseline
+mask_only,checkpoints/ablation/mask_only/best_model.pt,2.89,11,0,40.1,43.0,57.0,0.0,action_mask_harmful
+sb3_dqn_500k_continue,checkpoints/sb3_runs/sb3_dqn_basic17_500k_continue/best_model/best_model.zip,1.54,4,0,21.4,71.0,29.0,0.0,degraded_continue_training

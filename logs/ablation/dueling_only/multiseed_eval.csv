@@ -1,0 +1,6 @@
+seed_index,seed,avg_score,max_score,min_score,avg_steps,death_counts,rates
+0,3000,35.92,66,7,558.24,"{'wall_collision': 2, 'self_collision': 48, 'no_food_timeout': 0, 'unknown': 0}","{'self_collision': 96.0, 'wall_collision': 4.0, 'no_food_timeout': 0.0}"
+1,4000,35.08,60,10,561.1,"{'wall_collision': 1, 'self_collision': 49, 'no_food_timeout': 0, 'unknown': 0}","{'self_collision': 98.0, 'wall_collision': 2.0, 'no_food_timeout': 0.0}"
+2,5000,34.2,53,13,524.32,"{'wall_collision': 5, 'self_collision': 45, 'no_food_timeout': 0, 'unknown': 0}","{'self_collision': 90.0, 'wall_collision': 10.0, 'no_food_timeout': 0.0}"
+3,6000,36.44,67,2,569.56,"{'wall_collision': 5, 'self_collision': 45, 'no_food_timeout': 0, 'unknown': 0}","{'self_collision': 90.0, 'wall_collision': 10.0, 'no_food_timeout': 0.0}"
+4,7000,35.36,55,3,558.36,"{'wall_collision': 0, 'self_collision': 50, 'no_food_timeout': 0, 'unknown': 0}","{'self_collision': 100.0, 'wall_collision': 0.0, 'no_food_timeout': 0.0}"

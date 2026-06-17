@@ -153,6 +153,41 @@ if __name__ == "__main__":
     parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23"], help="状态模式")
     parser.add_argument("--seed", type=int, default=3000, help="随机种子")
     parser.add_argument("--save-path", type=str, default=None, help="CSV 保存路径")
+    parser.add_argument("--num-seeds", type=int, default=1, help="多 seed 评估数量")
     args = parser.parse_args()
 
-    evaluate(args.model, args.episodes, args.grid_size, args.state_mode, args.seed, args.save_path)
+    if args.num_seeds > 1:
+        # 多 seed 评估
+        all_results = []
+        for i in range(args.num_seeds):
+            seed = args.seed + i * 1000
+            print(f"\n--- Seed {i+1}/{args.num_seeds} (seed={seed}) ---")
+            result = evaluate(args.model, args.episodes, args.grid_size, args.state_mode, seed, None)
+            if result:
+                all_results.append(result)
+
+        if all_results:
+            import numpy as np
+            avg_scores = [r["avg_score"] for r in all_results]
+            max_scores = [r["max_score"] for r in all_results]
+            print(f"\n{'=' * 60}")
+            print(f"多 Seed 评估结果 ({args.num_seeds} seeds)")
+            print(f"{'=' * 60}")
+            print(f"  mean_avg_score: {np.mean(avg_scores):.2f} +/- {np.std(avg_scores):.2f}")
+            print(f"  mean_max_score: {np.mean(max_scores):.1f}")
+            print(f"  best_avg_score: {max(avg_scores):.2f}")
+
+            # 保存结果
+            csv_path = args.save_path or "logs/multiseed_eval.csv"
+            ensure_dir(os.path.dirname(csv_path))
+            records = []
+            for i, r in enumerate(all_results):
+                records.append({
+                    "seed_index": i,
+                    "seed": args.seed + i * 1000,
+                    **r,
+                })
+            save_train_log(csv_path, records)
+            print(f"\n详细记录已保存: {csv_path}")
+    else:
+        evaluate(args.model, args.episodes, args.grid_size, args.state_mode, args.seed, args.save_path)
