@@ -17,7 +17,7 @@ from snake_env import SnakeEnv
 from utils import ensure_dir, save_train_log
 
 
-def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mode: str = "basic17", seed: int = 3000):
+def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mode: str = "basic17", seed: int = 3000, save_path: str = None):
     """评估 SB3 DQN 模型。"""
     if not HAS_SB3:
         print("错误: stable_baselines3 未安装。")
@@ -129,8 +129,8 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
         print("  说明: 基础避障能力不稳定")
 
     # 保存 CSV
-    ensure_dir("logs")
-    csv_path = "logs/sb3_eval.csv"
+    csv_path = save_path or "logs/sb3_eval.csv"
+    ensure_dir(os.path.dirname(csv_path))
     save_train_log(csv_path, records)
     print(f"\n详细记录已保存: {csv_path}")
 
@@ -151,6 +151,7 @@ if __name__ == "__main__":
     parser.add_argument("--grid-size", type=int, default=20, help="网格大小")
     parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23"], help="状态模式")
     parser.add_argument("--seed", type=int, default=3000, help="随机种子")
+    parser.add_argument("--save-path", type=str, default=None, help="CSV 保存路径")
     args = parser.parse_args()
 
-    evaluate(args.model, args.episodes, args.grid_size, args.state_mode, args.seed)
+    evaluate(args.model, args.episodes, args.grid_size, args.state_mode, args.seed, args.save_path)

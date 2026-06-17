@@ -466,7 +466,72 @@ python evaluate_sb3.py --model checkpoints/sb3_best/best_model.zip --episodes 10
 python main.py --model checkpoints/sb3_best/best_model.zip --model-type sb3 --episodes 5 --fps 10 --terminal-render --state-mode basic17
 ```
 
-## 16. 后续优化方向
+## 16. SB3 timesteps 与手写 DQN episodes 的区别
+
+| 概念 | 含义 | 说明 |
+|------|------|------|
+| episode | 一整局游戏 | 从开始到死亡 |
+| timestep | 一次 env.step() | 一次动作执行 |
+
+**关系：**
+- 一个 episode 包含几十到几百个 timesteps
+- 200000 timesteps 大约是几百到几千局
+- 不能把 200000 timesteps 理解为 200000 局
+
+**公平对比需要看：**
+- total_timesteps（总步数）
+- episode_count（总局数）
+- avg_episode_length（平均每局步数）
+- eval_avg_score（评估平均分）
+
+## 17. 训练结果对比
+
+| 方法 | 训练量 | 平均分 | 最高分 | 撞墙% | 撞自己% | 超时% |
+|------|--------|--------|--------|-------|---------|-------|
+| hand_dqn_basic17_best | 3000 episodes | 1.38 | 13 | 63.3 | 29.6 | 7.1 |
+| sb3_dqn_basic17_200k | 200000 timesteps | 3.95 | 18 | 33.0 | 37.0 | 30.0 |
+| sb3_dqn_basic17_500k_continue | 500000 timesteps | 1.54 | 4 | 71.0 | 29.0 | 0.0 |
+
+**分析：**
+- SB3 200k 效果最好，平均分 3.95，最高分 18
+- 500k 继续训练反而变差，可能是灾难性遗忘
+- 手写 DQN 3000 episodes 效果一般，但超时率低
+
+**结论：**
+- 200000 timesteps 是当前最佳训练量
+- 继续训练需要更谨慎的参数调整
+- 推荐使用 `checkpoints/sb3_best/best_model.zip`
+
+## 18. 继续训练 SB3 DQN
+
+```bash
+# 从 best model 继续训练
+python train_sb3_dqn.py ^
+  --timesteps 500000 ^
+  --state-mode basic17 ^
+  --load-model checkpoints/sb3_best/best_model.zip ^
+  --continue-training ^
+  --run-name sb3_dqn_basic17_500k_continue
+
+# 评估
+python evaluate_sb3.py ^
+  --model checkpoints/sb3_runs/sb3_dqn_basic17_500k_continue/best_model/best_model.zip ^
+  --episodes 100 ^
+  --state-mode basic17
+
+# 观看
+python main.py ^
+  --model checkpoints/sb3_runs/sb3_dqn_basic17_500k_continue/best_model/best_model.zip ^
+  --model-type sb3 ^
+  --episodes 5 ^
+  --fps 10 ^
+  --terminal-render ^
+  --state-mode basic17
+```
+
+**注意：** 继续训练可能导致灾难性遗忘，效果不一定更好。建议先用 200k 模型。
+
+## 19. 后续优化方向
 
 1. **算法升级**：
    - Dueling DQN：分离状态价值和动作优势
@@ -491,7 +556,7 @@ python main.py --model checkpoints/sb3_best/best_model.zip --model-type sb3 --ep
    - 多食物模式
    - 障碍物模式
 
-## 16. 学习路线
+## 20. 学习路线
 
 建议按以下顺序学习本项目：
 
