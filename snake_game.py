@@ -106,6 +106,38 @@ class SnakeGame:
 
         return {"reward": reward, "done": False, "score": self.score, "ate_food": ate_food, "death_reason": None}
 
+    def get_action_mask(self) -> list:
+        """
+        获取动作掩码，返回长度为 3 的 list。
+        True 表示该动作可选（不会立即死亡）。
+        False 表示该动作下一步会立即撞墙或撞自己。
+        """
+        if self.done:
+            return [False, False, False]
+
+        mask = []
+        for action in range(3):
+            new_dir = self._turn(self.direction, action)
+            dr, dc = DIRECTIONS[new_dir]
+            head_r, head_c = self.snake[0]
+            new_head = (head_r + dr, head_c + dc)
+
+            r, c = new_head
+            # 撞墙
+            if r < 0 or r >= self.grid_size or c < 0 or c >= self.grid_size:
+                mask.append(False)
+                continue
+
+            # 撞自己（尾巴会移走，不算）
+            tail = self.snake[-1]
+            if new_head in self.snake and new_head != tail:
+                mask.append(False)
+                continue
+
+            mask.append(True)
+
+        return mask
+
     def _simulate_action(self, action: int) -> Tuple[Tuple[int, int], int, bool]:
         """
         模拟一步动作，不修改游戏状态。

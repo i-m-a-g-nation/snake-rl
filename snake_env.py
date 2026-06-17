@@ -67,7 +67,8 @@ class SnakeEnv(_BaseEnv):
         self.state_history.clear()
 
         obs = np.array(self.game.get_state(self.state_mode), dtype=np.float32)
-        info = {"score": self.game.score, "steps": self.game.steps}
+        action_mask = np.array(self.game.get_action_mask(), dtype=bool)
+        info = {"score": self.game.score, "steps": self.game.steps, "action_mask": action_mask}
         return obs, info
 
     def _get_state_key(self):
@@ -140,6 +141,7 @@ class SnakeEnv(_BaseEnv):
                 death_reason = "unknown"
 
         obs = np.array(self.game.get_state(self.state_mode), dtype=np.float32)
+        action_mask = np.array(self.game.get_action_mask(), dtype=bool)
         info = {
             "score": self.game.score,
             "steps": self.game.steps,
@@ -147,6 +149,7 @@ class SnakeEnv(_BaseEnv):
             "no_food_timeout": no_food_timeout,
             "repeat_penalty": repeat_penalty,
             "death_reason": death_reason,
+            "action_mask": action_mask,
         }
 
         if self.render_mode == "human":

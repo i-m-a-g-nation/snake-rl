@@ -692,7 +692,67 @@ python main.py ^
 - 运行 `python compare_results.py` 和 `python recommend_model.py`
 - 理解如何公平对比不同方法
 
-## 22. 后续优化方向
+## 22. DQN v2 增强版
+
+在手写 Double DQN 基础上新增以下功能：
+
+### Action Mask
+- 避免 agent 选择"下一步必死"的动作
+- 在 select_action 和 eval 阶段使用
+- 命令：`--action-mask`
+
+### Dueling DQN
+- 分离状态价值 V(s) 和动作优势 A(s,a)
+- Q(s,a) = V(s) + A(s,a) - mean(A(s,a))
+- 命令：`--dueling`
+
+### Prioritized Experience Replay (PER)
+- 优先学习 TD error 大的重要经验
+- 使用比例优先（无 SumTree）
+- 命令：`--per`
+
+### N-step Return
+- 让奖励更快传播
+- 默认 n_step=3
+- 命令：`--n-step 3`
+
+### 训练命令
+
+```bash
+# 完整 v2 训练
+python train.py ^
+  --episodes 3000 ^
+  --state-mode basic17 ^
+  --double-dqn ^
+  --dueling ^
+  --per ^
+  --n-step 3 ^
+  --action-mask ^
+  --save-path checkpoints/hand_dqn_v2/final_model.pt ^
+  --best-path checkpoints/hand_dqn_v2/best_model.pt ^
+  --log-dir logs/hand_dqn_v2
+```
+
+### Ablation 实验
+
+```bash
+# Baseline (旧模型)
+python train.py --episodes 1000 --state-mode basic17 --save-path checkpoints/ablation/baseline.pt --best-path checkpoints/ablation/baseline_best.pt --log-dir logs/ablation/baseline
+
+# + Dueling
+python train.py --episodes 1000 --state-mode basic17 --dueling --save-path checkpoints/ablation/dueling.pt --best-path checkpoints/ablation/dueling_best.pt --log-dir logs/ablation/dueling
+
+# + Action Mask
+python train.py --episodes 1000 --state-mode basic17 --dueling --action-mask --save-path checkpoints/ablation/mask.pt --best-path checkpoints/ablation/mask_best.pt --log-dir logs/ablation/mask
+
+# + PER
+python train.py --episodes 1000 --state-mode basic17 --dueling --action-mask --per --save-path checkpoints/ablation/per.pt --best-path checkpoints/ablation/per_best.pt --log-dir logs/ablation/per
+
+# Full v2
+python train.py --episodes 1000 --state-mode basic17 --dueling --action-mask --per --n-step 3 --save-path checkpoints/ablation/full.pt --best-path checkpoints/ablation/full_best.pt --log-dir logs/ablation/full
+```
+
+## 23. 后续优化方向
 
 如果需要继续改进，可以尝试：
 
