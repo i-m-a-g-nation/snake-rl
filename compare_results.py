@@ -102,7 +102,7 @@ def compare():
             "training_unit": "timesteps",
             "training_amount": "200000",
             **sb3_200k_stats,
-            "notes": "SB3 DQN 200k timesteps",
+            "notes": "recommended_sb3_model",
         })
 
     # SB3 500k continue
@@ -114,7 +114,7 @@ def compare():
             "training_unit": "timesteps",
             "training_amount": "500000",
             **sb3_500k_stats,
-            "notes": "SB3 DQN 从 200k best 继续训练",
+            "notes": "degraded_after_continue_training",
         })
 
     # SB3 1000k (如果存在)

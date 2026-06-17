@@ -486,37 +486,104 @@ python main.py --model checkpoints/sb3_best/best_model.zip --model-type sb3 --ep
 
 ## 17. 训练结果对比
 
-| 方法 | 训练量 | 平均分 | 最高分 | 撞墙% | 撞自己% | 超时% |
-|------|--------|--------|--------|-------|---------|-------|
-| hand_dqn_basic17_best | 3000 episodes | 1.38 | 13 | 63.3 | 29.6 | 7.1 |
-| sb3_dqn_basic17_200k | 200000 timesteps | 3.95 | 18 | 33.0 | 37.0 | 30.0 |
-| sb3_dqn_basic17_500k_continue | 500000 timesteps | 1.54 | 4 | 71.0 | 29.0 | 0.0 |
+| 方法 | 训练量 | 平均分 | 最高分 | 撞墙% | 撞自己% | 超时% | 备注 |
+|------|--------|--------|--------|-------|---------|-------|------|
+| hand_dqn_basic17_best | 3000 episodes | 1.38 | 13 | 63.3 | 29.6 | 7.1 | 手写 Double DQN |
+| sb3_dqn_basic17_200k | 200000 timesteps | 3.95 | 18 | 33.0 | 37.0 | 30.0 | **推荐 SB3 模型** |
+| sb3_dqn_basic17_500k_continue | 500000 timesteps | 1.54 | 4 | 71.0 | 29.0 | 0.0 | degraded |
 
 **分析：**
 - SB3 200k 效果最好，平均分 3.95，最高分 18
-- 500k 继续训练反而变差，可能是灾难性遗忘
+- 500k 继续训练反而变差（灾难性遗忘）
 - 手写 DQN 3000 episodes 效果一般，但超时率低
 
 **结论：**
 - 200000 timesteps 是当前最佳训练量
-- 继续训练需要更谨慎的参数调整
 - 推荐使用 `checkpoints/sb3_best/best_model.zip`
 
-## 18. 继续训练 SB3 DQN
+## 18. 为什么 500k Continue Training 变差
+
+继续训练（Continue Training）可能导致效果下降，原因包括：
+
+1. **Replay Buffer 丢失**：best_model.zip 不包含 replay buffer，继续训练时经验为空
+2. **探索分布改变**：新的 exploration 参数可能破坏已学到的策略
+3. **灾难性遗忘**：新数据覆盖旧知识
+4. **RL 训练非单调**：强化学习不是每一步都提升，可能震荡
+5. **超参数不匹配**：继续训练可能需要不同的学习率/探索率
+
+**建议：**
+- 继续训练时使用 `--load-replay-buffer` 加载 replay buffer
+- 或者从零开始训练，不要 continue training
+- 保存 best model，用独立 eval 判断结果
+
+## 19. 当前推荐模型
+
+### 推荐 SB3 模型
+```
+checkpoints/sb3_best/best_model.zip
+avg_score = 3.95
+max_score = 18
+```
+
+### 推荐观看命令
+```bash
+python main.py --model checkpoints/sb3_best/best_model.zip --model-type sb3 --episodes 5 --fps 10 --terminal-render --state-mode basic17
+```
+
+### 推荐评估命令
+```bash
+python evaluate_sb3.py --model checkpoints/sb3_best/best_model.zip --episodes 100 --state-mode basic17
+```
+
+## 20. 从零训练 500k 的推荐命令
+
+如果需要更长训练，建议从零开始：
 
 ```bash
-# 从 best model 继续训练
+# 从零训练 500k
+python train_sb3_dqn.py ^
+  --timesteps 500000 ^
+  --state-mode basic17 ^
+  --run-name sb3_dqn_basic17_500k_scratch ^
+  --learning-starts 10000 ^
+  --exploration-fraction 0.5 ^
+  --exploration-final-eps 0.05 ^
+  --eval-freq 10000 ^
+  --eval-episodes 30 ^
+  --checkpoint-freq 50000 ^
+  --save-replay-buffer
+
+# 评估
+python evaluate_sb3.py ^
+  --model checkpoints/sb3_runs/sb3_dqn_basic17_500k_scratch/best_model.zip ^
+  --episodes 100 ^
+  --state-mode basic17 ^
+  --save-path logs/sb3_runs/sb3_dqn_basic17_500k_scratch/sb3_eval.csv
+
+# 观看
+python main.py ^
+  --model checkpoints/sb3_runs/sb3_dqn_basic17_500k_scratch/best_model.zip ^
+  --model-type sb3 ^
+  --episodes 5 ^
+  --fps 10 ^
+  --terminal-render ^
+  --state-mode basic17
+```
+
+## 21. 继续训练 SB3 DQN（不推荐）
+
+```bash
+# 从 best model 继续训练（不推荐，可能退化）
 python train_sb3_dqn.py ^
   --timesteps 500000 ^
   --state-mode basic17 ^
   --load-model checkpoints/sb3_best/best_model.zip ^
   --continue-training ^
-  --run-name sb3_dqn_basic17_500k_continue
+  --run-name sb3_dqn_basic17_500k_continue ^
+  --load-replay-buffer checkpoints/sb3_runs/sb3_dqn_basic17_200k/replay_buffer.pkl
+```
 
-# 评估
-python evaluate_sb3.py ^
-  --model checkpoints/sb3_runs/sb3_dqn_basic17_500k_continue/best_model/best_model.zip ^
-  --episodes 100 ^
+**注意：** 继续训练可能导致灾难性遗忘，效果不一定更好。建议从零训练。
   --state-mode basic17
 
 # 观看

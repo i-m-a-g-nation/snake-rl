@@ -134,6 +134,9 @@ def train(args):
         print(f"从已有模型继续训练: {args.load_model}")
         model = DQN.load(args.load_model, env=train_env, device=device)
         reset_num_timesteps = not args.continue_training
+        if args.continue_training:
+            print("警告: 继续训练 DQN 不加载 replay buffer 可能导致不稳定")
+            print("建议使用 --load-replay-buffer 加载 replay buffer")
     else:
         if args.load_model:
             print(f"警告: 模型文件不存在 {args.load_model}，将从零开始训练")
@@ -155,6 +158,12 @@ def train(args):
             device=device,
         )
         reset_num_timesteps = True
+
+    # 加载 replay buffer
+    if args.load_replay_buffer and os.path.exists(args.load_replay_buffer):
+        print(f"加载 replay buffer: {args.load_replay_buffer}")
+        model.load_replay_buffer(args.load_replay_buffer)
+        print(f"Replay buffer 大小: {len(model.replay_buffer)}")
 
     # 创建 Callbacks
     eval_callback = EvalCallback(
@@ -194,6 +203,12 @@ def train(args):
     final_model_path = os.path.join(run_dir, "final_model.zip")
     model.save(final_model_path)
 
+    # 保存 replay buffer
+    if args.save_replay_buffer:
+        replay_buffer_path = os.path.join(run_dir, "replay_buffer.pkl")
+        model.save_replay_buffer(replay_buffer_path)
+        print(f"Replay buffer 已保存: {replay_buffer_path}")
+
     print(f"\n{'=' * 70}")
     print(f"训练完成!")
     print(f"Run 名称: {args.run_name}")
@@ -218,6 +233,8 @@ if __name__ == "__main__":
     parser.add_argument("--run-name", type=str, default="sb3_dqn_basic17_200k", help="运行名称")
     parser.add_argument("--load-model", type=str, default=None, help="从已有模型继续训练")
     parser.add_argument("--continue-training", action="store_true", help="继续训练（不重置 timestep 计数）")
+    parser.add_argument("--save-replay-buffer", action="store_true", help="训练后保存 replay buffer")
+    parser.add_argument("--load-replay-buffer", type=str, default=None, help="加载 replay buffer")
     parser.add_argument("--seed", type=int, default=42, help="随机种子")
     parser.add_argument("--learning-rate", type=float, default=1e-4, help="学习率")
     parser.add_argument("--buffer-size", type=int, default=100000, help="回放缓冲区大小")
