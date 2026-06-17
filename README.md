@@ -173,7 +173,7 @@ python main.py --model checkpoints/best_model.pt --episodes 10 --fps 15
 
 ## 9. 状态空间设计
 
-状态为 **17 维特征向量**，包含危险感知、方向、食物位置、归一化特征和 Flood Fill 可达空间：
+状态为 **23 维特征向量**，包含危险感知、方向、食物位置、归一化特征、Flood Fill 可达空间、Tail 可达性和 Food 可达性：
 
 | 索引 | 特征 | 含义 |
 |------|------|------|
@@ -194,12 +194,19 @@ python main.py --model checkpoints/best_model.pt --episodes 10 --fps 15
 | 14 | free_space_straight | 直行后可达空间比例 |
 | 15 | free_space_left | 左转后可达空间比例 |
 | 16 | free_space_right | 右转后可达空间比例 |
+| 17 | tail_reachable_straight | 直行后能否到达蛇尾 |
+| 18 | tail_reachable_left | 左转后能否到达蛇尾 |
+| 19 | tail_reachable_right | 右转后能否到达蛇尾 |
+| 20 | food_reachable_straight | 直行后能否到达食物 |
+| 21 | food_reachable_left | 左转后能否到达食物 |
+| 22 | food_reachable_right | 右转后能否到达食物 |
 
-**为什么从 11 维扩展到 17 维：**
-- 原 11 维缺少蛇身整体信息，agent 无法感知"蛇有多长"
-- 缺少可达空间信息，agent 无法识别死胡同
-- 缺少步数信息，agent 无法感知"已经绕圈多久"
-- Flood Fill 特征让 agent 能预判动作后果，避免进入死路
+**为什么从 17 维扩展到 23 维：**
+- SelfDeath 高达 85%~100%，说明蛇变长后路径规划不足
+- 原 17 维缺少"能否到达尾巴"的信息，agent 无法判断是否会被困住
+- `tail_reachable` 让 agent 知道哪个动作能保持与蛇尾的连通性
+- `food_reachable` 让 agent 知道哪个动作不会把自己封死
+- 这两个特征帮助 agent 做长期规划，而不是只看眼前
 
 ## 10. 动作空间设计
 
@@ -245,6 +252,8 @@ def absolute_direction_to_relative_action(current_direction, target_direction):
 | 离食物更远 | -0.02 | 轻微惩罚 |
 | 重复状态（绕圈） | -0.2 | 检测到同一状态出现≥3次 |
 | 进入死胡同 | -0.5 | 可达空间 < 5% |
+| Tail 不可达 | -0.2 | 动作后无法到达蛇尾 |
+| Food 不可达 | -0.1 | 动作后无法到达食物 |
 | 超过动态步数限制 | -10 | max(100, 蛇长×20) 步未吃到食物 |
 
 **为什么降低距离奖励：**
@@ -260,6 +269,12 @@ def absolute_direction_to_relative_action(current_direction, target_direction):
 **为什么动态步数限制：**
 - 固定 1000 步对短蛇太宽松，对长蛇太严格
 - max(100, 蛇长×20) 让长蛇有更多时间找食物
+
+**为什么加入 Tail/Food 可达性惩罚：**
+- SelfDeath 高达 85%~100%，说明蛇变长后路径规划不足
+- Tail 不可达意味着可能被困住，给予 -0.2 惩罚
+- Food 不可达意味着可能封死路径，给予 -0.1 惩罚
+- 惩罚较轻，避免 agent 过于保守
 
 ## 12. DQN 原理简述
 
@@ -362,13 +377,14 @@ pip install stable-baselines3
 
 1. **Double DQN** ✅：减少 Q 值过估计，默认启用
 2. **Flood Fill 可达空间** ✅：检测死胡同，新增 3 维状态特征
-3. **扩展状态空间** ✅：从 11 维扩展到 17 维
+3. **扩展状态空间** ✅：从 11 维扩展到 23 维
 4. **重复状态检测** ✅：检测绕圈并给予惩罚
 5. **动态步数限制** ✅：max(100, 蛇长×20)
 6. **Best Model 保存** ✅：定期评估，保存最优模型
 7. **Warmup 预热** ✅：攒够经验后再训练
 8. **奖励函数优化** ✅：降低距离奖励，增加绕圈/死胡同惩罚
 9. **死亡原因统计** ✅：记录每局结束原因，评估时输出死亡比例
+10. **Tail/Food 可达性** ✅：检测动作后是否能到达蛇尾/食物
 
 ## 15. 死亡原因分析
 

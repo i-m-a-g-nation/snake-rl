@@ -153,39 +153,100 @@ class SnakeGame:
 
         return len(visited)
 
-    def get_free_space_after_action(self, action: int) -> float:
-        """
-        计算执行某动作后从新蛇头可达的空格比例。
-        模拟时考虑蛇身移动（不吃食物时尾巴会移走）。
-        """
+    def _build_obstacles_after_action(self, action: int):
+        """模拟动作后构建障碍物集合，返回 (new_head, would_die, obstacles)。"""
         new_head, new_dir, would_die = self._simulate_action(action)
         if would_die:
-            return 0.0
+            return new_head, True, set()
 
-        # 构建障碍物集合: 蛇身（除了尾巴，因为不吃食物时尾巴会移走）
-        # 注意：new_head 已经加入蛇头，所以障碍物是当前蛇身 + new_head - 尾巴
         obstacles = set(self.snake)
         obstacles.add(new_head)
         # 如果不吃食物，尾巴会移走
         if self.food is not None and new_head != self.food:
             obstacles.discard(self.snake[-1])
 
+        return new_head, False, obstacles
+
+    def get_free_space_after_action(self, action: int) -> float:
+        """计算执行某动作后从新蛇头可达的空格比例。"""
+        new_head, would_die, obstacles = self._build_obstacles_after_action(action)
+        if would_die:
+            return 0.0
+
         total_cells = self.grid_size * self.grid_size
         reachable = self._flood_fill(new_head, obstacles)
         return reachable / total_cells
 
+    def _is_reachable(self, start, target, obstacles) -> bool:
+        """BFS 判断从 start 是否能到达 target。"""
+        if start[0] < 0 or start[0] >= self.grid_size or start[1] < 0 or start[1] >= self.grid_size:
+            return False
+        if start in obstacles:
+            return False
+        if start == target:
+            return True
+
+        visited = set()
+        queue = deque([start])
+        visited.add(start)
+
+        while queue:
+            r, c = queue.popleft()
+            for dr, dc in DIRECTIONS.values():
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < self.grid_size and 0 <= nc < self.grid_size:
+                    if (nr, nc) == target:
+                        return True
+                    if (nr, nc) not in visited and (nr, nc) not in obstacles:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+        return False
+
+    def get_tail_reachable_after_action(self, action: int) -> bool:
+        """模拟动作后，从新蛇头是否能到达蛇尾。"""
+        new_head, would_die, obstacles = self._build_obstacles_after_action(action)
+        if would_die:
+            return False
+
+        # 蛇尾位置（移动后尾巴可能移走，所以用当前尾巴的前一个位置作为目标）
+        # 实际上我们检查是否能到达蛇尾附近（蛇尾的邻居也算）
+        tail = self.snake[-1]
+        # 如果不吃食物，尾巴会移走，目标是当前尾巴位置
+        if self.food is not None and new_head != self.food:
+            # 尾巴会移走，检查能否到达尾巴的前一个位置（即移动后的尾巴）
+            if len(self.snake) >= 2:
+                target = self.snake[-2]  # 移动后的新尾巴
+            else:
+                target = tail
+        else:
+            target = tail
+
+        # 从新蛇头检查能否到达 target
+        return self._is_reachable(new_head, target, obstacles)
+
+    def get_food_reachable_after_action(self, action: int) -> bool:
+        """模拟动作后，从新蛇头是否能到达食物。"""
+        if self.food is None:
+            return True
+
+        new_head, would_die, obstacles = self._build_obstacles_after_action(action)
+        if would_die:
+            return False
+
+        return self._is_reachable(new_head, self.food, obstacles)
+
     def get_state(self) -> list:
         """
-        获取扩展状态表示 (17维):
+        获取扩展状态表示 (23维):
         [danger_straight, danger_left, danger_right,
          dir_up, dir_down, dir_left, dir_right,
          food_left, food_right, food_up, food_down,
          distance_to_food_normalized,
          snake_length_normalized,
          steps_since_food_normalized,
-         free_space_straight,
-         free_space_left,
-         free_space_right]
+         free_space_straight, free_space_left, free_space_right,
+         tail_reachable_straight, tail_reachable_left, tail_reachable_right,
+         food_reachable_straight, food_reachable_left, food_reachable_right]
         """
         head_r, head_c = self.snake[0]
 
@@ -199,7 +260,6 @@ class SnakeGame:
             nr, nc = head_r + dr, head_c + dc
             if nr < 0 or nr >= self.grid_size or nc < 0 or nc >= self.grid_size:
                 return 1
-            # 尾巴在不吃食物时会移走，不算危险
             tail = self.snake[-1]
             if (nr, nc) in self.snake and (nr, nc) != tail:
                 return 1
@@ -242,6 +302,16 @@ class SnakeGame:
         free_space_left = self.get_free_space_after_action(ACTION_LEFT)
         free_space_right = self.get_free_space_after_action(ACTION_RIGHT)
 
+        # Tail 可达性
+        tail_reachable_straight = 1.0 if self.get_tail_reachable_after_action(ACTION_STRAIGHT) else 0.0
+        tail_reachable_left = 1.0 if self.get_tail_reachable_after_action(ACTION_LEFT) else 0.0
+        tail_reachable_right = 1.0 if self.get_tail_reachable_after_action(ACTION_RIGHT) else 0.0
+
+        # Food 可达性
+        food_reachable_straight = 1.0 if self.get_food_reachable_after_action(ACTION_STRAIGHT) else 0.0
+        food_reachable_left = 1.0 if self.get_food_reachable_after_action(ACTION_LEFT) else 0.0
+        food_reachable_right = 1.0 if self.get_food_reachable_after_action(ACTION_RIGHT) else 0.0
+
         return [
             danger_straight, danger_left, danger_right,
             dir_up, dir_down, dir_left, dir_right,
@@ -249,14 +319,14 @@ class SnakeGame:
             distance_to_food_normalized,
             snake_length_normalized,
             steps_since_food_normalized,
-            free_space_straight,
-            free_space_left,
-            free_space_right,
+            free_space_straight, free_space_left, free_space_right,
+            tail_reachable_straight, tail_reachable_left, tail_reachable_right,
+            food_reachable_straight, food_reachable_left, food_reachable_right,
         ]
 
     def get_state_dim(self) -> int:
         """返回状态维度。"""
-        return 17
+        return 23
 
     def get_action_dim(self) -> int:
         """返回动作维度。"""

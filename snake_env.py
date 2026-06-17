@@ -87,6 +87,14 @@ class SnakeEnv:
             if free_space < 0.05:
                 reward -= 0.5
 
+            # Tail 可达性惩罚
+            if not self.game.get_tail_reachable_after_action(action):
+                reward -= 0.2
+
+            # Food 可达性惩罚
+            if not self.game.get_food_reachable_after_action(action):
+                reward -= 0.1
+
             # 动态步数限制
             if self.steps_since_food >= self.no_food_step_limit:
                 terminated = True
