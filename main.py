@@ -11,7 +11,7 @@ from snake_env import SnakeEnv
 from agent import DQNAgent
 from terminal_input import (
     get_key_nonblocking, clear_screen, hide_cursor, show_cursor,
-    move_cursor_home,
+    render_frame,
 )
 
 # 尝试导入 pygame
@@ -42,13 +42,12 @@ def watch_terminal_realtime(model_path: str, episodes: int = 5, grid_size: int =
         for ep in range(1, episodes + 1):
             state, info = env.reset(seed=ep * 100)
             done = False
+            action = 0
 
             while not done:
                 # 检查退出
                 key = get_key_nonblocking()
                 if key == "Q":
-                    show_cursor()
-                    print("\n退出观看。")
                     return
 
                 action = agent.select_action(state, epsilon=0.0)
@@ -56,50 +55,48 @@ def watch_terminal_realtime(model_path: str, episodes: int = 5, grid_size: int =
                 done = terminated or truncated
                 state = next_state
 
-                # 逐帧渲染
-                move_cursor_home()
-                _render_agent_frame(env, ep, episodes, action, fps)
+                # 构建完整帧
+                frame = _build_frame(env, ep, episodes, action, fps)
+                render_frame(frame)
 
                 time.sleep(1.0 / fps)
 
-            # episode 结束暂停
-            time.sleep(0.5)
+            # episode 结束暂停，显示结果
+            frame = _build_frame(env, ep, episodes, action, fps, game_over=True)
+            render_frame(frame)
+            time.sleep(1.0)
 
     finally:
         show_cursor()
 
     env.close()
-    print("\n观看结束。")
 
 
-def _render_agent_frame(env: SnakeEnv, ep: int, total_eps: int, action: int, fps: int):
-    """渲染 Agent 观看的一帧。"""
+def _build_frame(env: SnakeEnv, ep: int, total_eps: int, action: int, fps: int, game_over: bool = False) -> str:
+    """构建完整帧字符串。"""
     game = env.game
-    grid_size = game.grid_size
     lines = []
 
-    lines.append(f" Snake - DQN Agent Watch (Episode {ep}/{total_eps})")
+    # 标题
+    lines.append(f"Snake - DQN Agent Watch (Episode {ep}/{total_eps})")
     lines.append("")
 
-    lines.append("+" + "---" * grid_size + "+")
-    grid = [["." for _ in range(grid_size)] for _ in range(grid_size)]
-    for i, (r, c) in enumerate(game.snake):
-        if 0 <= r < grid_size and 0 <= c < grid_size:
-            grid[r][c] = "O" if i == 0 else "o"
-    if game.food:
-        fr, fc = game.food
-        grid[fr][fc] = "*"
-    for row in grid:
-        lines.append("|" + " ".join(f"{ch} " for ch in row) + "|")
-    lines.append("+" + "---" * grid_size + "+")
+    # 棋盘（使用 render_terminal）
+    lines.append(game.render_terminal())
+    lines.append("")
 
+    # 状态信息
+    dir_name = DIRECTION_NAMES.get(game.direction, "?")
+    act_name = ACTION_NAMES.get(action, "?")
     lines.append(f"  Score: {game.score}   Steps: {game.steps}   FPS: {fps}")
-    lines.append(f"  Direction: {DIRECTION_NAMES.get(game.direction, '?')}   Action: {ACTION_NAMES.get(action, '?')}")
-    lines.append("  Press Q to quit")
+    lines.append(f"  Direction: {dir_name}   Action: {act_name}")
 
-    output = "\n".join(lines)
-    sys.stdout.write(output)
-    sys.stdout.flush()
+    if game_over:
+        lines.append("  [GAME OVER]")
+    else:
+        lines.append("  Press Q to quit")
+
+    return "\n".join(lines) + "\n"
 
 
 def watch_terminal_summary(model_path: str, episodes: int = 5, grid_size: int = 20):

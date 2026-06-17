@@ -100,3 +100,16 @@ def parse_arrow_key(key_str):
     elif key_str == "LEFT":
         return 3  # DIR_LEFT
     return None
+
+
+def render_frame(text: str):
+    """渲染一帧：光标回左上角，清除屏幕，写入内容。"""
+    sys.stdout.write("\033[H\033[J")
+    sys.stdout.write(text)
+    sys.stdout.flush()
+
+
+def clear_screen_ansi():
+    """ANSI 清屏。"""
+    sys.stdout.write("\033[2J\033[H")
+    sys.stdout.flush()
