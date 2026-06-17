@@ -96,6 +96,16 @@ class SnakeEnv:
 
         truncated = no_food_timeout
 
+        # 确定死亡原因
+        death_reason = None
+        if terminated:
+            if no_food_timeout:
+                death_reason = "no_food_timeout"
+            elif result["death_reason"]:
+                death_reason = result["death_reason"]
+            else:
+                death_reason = "unknown"
+
         obs = np.array(self.game.get_state(), dtype=np.float32)
         info = {
             "score": self.game.score,
@@ -103,6 +113,7 @@ class SnakeEnv:
             "ate_food": result["ate_food"],
             "no_food_timeout": no_food_timeout,
             "repeat_penalty": repeat_penalty,
+            "death_reason": death_reason,
         }
         return obs, reward, terminated, truncated, info
 

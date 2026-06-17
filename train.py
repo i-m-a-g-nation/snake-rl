@@ -1,4 +1,4 @@
-"""DQN 训练入口。支持 Double DQN、评估、best model 保存。"""
+"""DQN 训练入口。支持 Double DQN、评估、best model 保存、死亡原因统计。"""
 
 import argparse
 import os
@@ -13,10 +13,15 @@ from utils import ensure_dir, append_train_log
 
 
 def evaluate_agent(agent: DQNAgent, grid_size: int = 20, eval_episodes: int = 20, seed: int = 1000):
-    """评估 Agent（epsilon=0，不训练）。返回 (avg_score, max_score, avg_steps)。"""
+    """
+    评估 Agent（epsilon=0，不训练）。
+    返回: (avg_score, max_score, avg_steps, death_stats)
+    death_stats: {"wall_collision": int, "self_collision": int, "no_food_timeout": int}
+    """
     env = SnakeEnv(grid_size=grid_size, seed=seed)
     scores = []
     steps_list = []
+    death_counts = {"wall_collision": 0, "self_collision": 0, "no_food_timeout": 0}
 
     for ep in range(eval_episodes):
         state, info = env.reset(seed=seed + ep)
@@ -27,9 +32,12 @@ def evaluate_agent(agent: DQNAgent, grid_size: int = 20, eval_episodes: int = 20
             done = terminated or truncated
         scores.append(info["score"])
         steps_list.append(info["steps"])
+        death_reason = info.get("death_reason")
+        if death_reason in death_counts:
+            death_counts[death_reason] += 1
 
     env.close()
-    return np.mean(scores), max(scores), np.mean(steps_list)
+    return np.mean(scores), max(scores), np.mean(steps_list), death_counts
 
 
 def train(args):
@@ -70,6 +78,9 @@ def train(args):
     scores = []
     total_rewards = []
     total_steps = 0
+    # 死亡原因统计
+    wall_collision_total = 0
+    self_collision_total = 0
     no_food_timeout_total = 0
     repeat_penalty_total = 0
 
@@ -77,8 +88,8 @@ def train(args):
         state, info = env.reset(seed=args.seed + episode if args.seed else None)
         episode_reward = 0.0
         done = False
-        ep_no_food_timeout = 0
         ep_repeat_penalty = 0
+        death_reason = None
 
         while not done:
             epsilon = agent.compute_epsilon()
@@ -98,16 +109,22 @@ def train(args):
             episode_reward += reward
             total_steps += 1
 
-            if info.get("no_food_timeout"):
-                ep_no_food_timeout += 1
             if info.get("repeat_penalty"):
                 ep_repeat_penalty += 1
 
         score = info["score"]
+        death_reason = info.get("death_reason", "unknown")
         scores.append(score)
         total_rewards.append(episode_reward)
-        no_food_timeout_total += ep_no_food_timeout
         repeat_penalty_total += ep_repeat_penalty
+
+        # 统计死亡原因
+        if death_reason == "wall_collision":
+            wall_collision_total += 1
+        elif death_reason == "self_collision":
+            self_collision_total += 1
+        elif death_reason == "no_food_timeout":
+            no_food_timeout_total += 1
 
         avg50_score = np.mean(scores[-50:])
 
@@ -120,24 +137,39 @@ def train(args):
             "best_score": max(scores),
             "loss": round(loss, 4) if loss else 0,
             "avg50_score": round(avg50_score, 2),
+            "death_reason": death_reason,
             "eval_avg_score": "",
             "eval_max_score": "",
-            "no_food_timeout_count": ep_no_food_timeout,
-            "repeat_penalty_count": ep_repeat_penalty,
+            "eval_wall_deaths": "",
+            "eval_self_deaths": "",
+            "eval_timeout_deaths": "",
+            "wall_collision_count": wall_collision_total,
+            "self_collision_count": self_collision_total,
+            "no_food_timeout_count": no_food_timeout_total,
+            "repeat_penalty_count": repeat_penalty_total,
         }
 
         # 定期评估
         if episode % args.eval_interval == 0:
-            eval_avg, eval_max, eval_steps = evaluate_agent(
+            eval_avg, eval_max, eval_steps, death_stats = evaluate_agent(
                 agent, grid_size=20, eval_episodes=args.eval_episodes, seed=2000
             )
             log_record["eval_avg_score"] = round(eval_avg, 2)
             log_record["eval_max_score"] = eval_max
+            log_record["eval_wall_deaths"] = death_stats["wall_collision"]
+            log_record["eval_self_deaths"] = death_stats["self_collision"]
+            log_record["eval_timeout_deaths"] = death_stats["no_food_timeout"]
 
             # 保存 best model
             if eval_avg > best_eval_score:
                 best_eval_score = eval_avg
                 agent.save("checkpoints/best_model.pt")
+
+            # 计算评估死亡比例
+            total_eval = args.eval_episodes
+            wall_pct = death_stats["wall_collision"] / total_eval * 100
+            self_pct = death_stats["self_collision"] / total_eval * 100
+            timeout_pct = death_stats["no_food_timeout"] / total_eval * 100
 
             print(
                 f"Episode {episode:5d} | "
@@ -145,7 +177,10 @@ def train(args):
                 f"Avg50: {avg50_score:5.1f} | "
                 f"Eps: {epsilon:.4f} | "
                 f"EvalAvg: {eval_avg:5.1f} | "
-                f"EvalMax: {eval_max:3d}"
+                f"EvalMax: {eval_max:3d} | "
+                f"Self: {self_pct:4.0f}% | "
+                f"Wall: {wall_pct:4.0f}% | "
+                f"Timeout: {timeout_pct:4.0f}%"
             )
         elif episode % 10 == 0 or episode == 1:
             print(
@@ -153,7 +188,8 @@ def train(args):
                 f"Score: {score:3d} | "
                 f"Reward: {episode_reward:8.2f} | "
                 f"Eps: {epsilon:.4f} | "
-                f"Avg50: {avg50_score:5.1f}"
+                f"Avg50: {avg50_score:5.1f} | "
+                f"Death: {death_reason}"
             )
 
         append_train_log(log_path, log_record)
@@ -172,8 +208,11 @@ def train(args):
     print(f"最佳模型: checkpoints/best_model.pt")
     print(f"最佳 eval 平均分: {best_eval_score:.2f}")
     print(f"训练日志: {log_path}")
-    print(f"绕圈超时总次数: {no_food_timeout_total}")
-    print(f"重复惩罚总次数: {repeat_penalty_total}")
+    print(f"死亡原因统计 (训练阶段):")
+    print(f"  撞墙: {wall_collision_total}")
+    print(f"  撞自己: {self_collision_total}")
+    print(f"  超时: {no_food_timeout_total}")
+    print(f"  重复惩罚: {repeat_penalty_total}")
 
     env.close()
 

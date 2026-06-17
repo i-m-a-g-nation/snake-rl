@@ -368,6 +368,37 @@ pip install stable-baselines3
 6. **Best Model 保存** ✅：定期评估，保存最优模型
 7. **Warmup 预热** ✅：攒够经验后再训练
 8. **奖励函数优化** ✅：降低距离奖励，增加绕圈/死胡同惩罚
+9. **死亡原因统计** ✅：记录每局结束原因，评估时输出死亡比例
+
+## 15. 死亡原因分析
+
+每局游戏结束后，系统会记录死亡原因：
+
+| 死亡原因 | 含义 | 诊断 |
+|----------|------|------|
+| `wall_collision` | 撞墙 | 基础避障能力不足，agent 未学会感知边界 |
+| `self_collision` | 撞自己 | 蛇变长后空间规划不足，路径规划能力弱 |
+| `no_food_timeout` | 超时未吃到食物 | 绕圈/找不到食物，策略过于保守 |
+| `manual_quit` | 手动退出 | 用户主动退出 |
+
+**评估输出示例：**
+```
+Episode  100 | Score:   2 | Avg50:   1.2 | Eps: 0.9800 | EvalAvg:   1.5 | EvalMax:   3 | Self:  45% | Wall:  30% | Timeout:  25%
+```
+
+**如何解读：**
+- **Self% 高**：蛇变长后容易撞自己 → 需要更好的路径规划
+- **Wall% 高**：基础避障差 → 需要更多训练或更好的危险感知
+- **Timeout% 高**：绕圈严重 → 需要更强的绕圈惩罚或更好的状态表示
+
+**训练日志字段：**
+- `death_reason`：本局死亡原因
+- `wall_collision_count`：累计撞墙次数
+- `self_collision_count`：累计撞自己次数
+- `no_food_timeout_count`：累计超时次数
+- `eval_wall_deaths`：评估阶段撞墙次数
+- `eval_self_deaths`：评估阶段撞自己次数
+- `eval_timeout_deaths`：评估阶段超时次数
 
 ## 15. 后续优化方向
 

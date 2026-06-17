@@ -65,10 +65,11 @@ class SnakeGame:
     def step(self, action: int) -> dict:
         """
         执行一步动作。
-        返回: {"reward": float, "done": bool, "score": int, "ate_food": bool}
+        返回: {"reward", "done", "score", "ate_food", "death_reason"}
+        death_reason: "wall_collision" | "self_collision" | None
         """
         if self.done:
-            return {"reward": 0.0, "done": True, "score": self.score, "ate_food": False}
+            return {"reward": 0.0, "done": True, "score": self.score, "ate_food": False, "death_reason": None}
 
         new_dir = self._turn(self.direction, action)
         dr, dc = DIRECTIONS[new_dir]
@@ -79,13 +80,13 @@ class SnakeGame:
         r, c = new_head
         if r < 0 or r >= self.grid_size or c < 0 or c >= self.grid_size:
             self.done = True
-            return {"reward": -10.0, "done": True, "score": self.score, "ate_food": False}
+            return {"reward": -10.0, "done": True, "score": self.score, "ate_food": False, "death_reason": "wall_collision"}
 
         # 碰撞检测: 撞自己 (除了尾巴，因为尾巴会移走)
         tail = self.snake[-1]
         if new_head in self.snake and new_head != tail:
             self.done = True
-            return {"reward": -10.0, "done": True, "score": self.score, "ate_food": False}
+            return {"reward": -10.0, "done": True, "score": self.score, "ate_food": False, "death_reason": "self_collision"}
 
         # 移动蛇
         self.direction = new_dir
@@ -103,7 +104,7 @@ class SnakeGame:
             self.snake.pop()
             reward = -0.01
 
-        return {"reward": reward, "done": False, "score": self.score, "ate_food": ate_food}
+        return {"reward": reward, "done": False, "score": self.score, "ate_food": ate_food, "death_reason": None}
 
     def _simulate_action(self, action: int) -> Tuple[Tuple[int, int], int, bool]:
         """
