@@ -114,9 +114,22 @@ python train.py --episodes 3000 --state-mode reachable23
 # 安装 SB3（如未安装）
 pip install stable-baselines3
 
-# 训练
+# 快速接口测试 (10000 timesteps)
+python train_sb3_dqn.py --timesteps 10000 --state-mode basic17
+
+# 正式训练 (200000 timesteps)
 python train_sb3_dqn.py --timesteps 200000 --state-mode basic17
+
+# 更长训练 (500000 timesteps)
+python train_sb3_dqn.py --timesteps 500000 --state-mode basic17
 ```
+
+**说明：**
+- 10000 timesteps 只用于测试接口，不能判断效果
+- 判断效果要看 200000 或 500000 timesteps
+- Best model 自动保存在 `checkpoints/sb3_best/best_model.zip`
+- Final model 保存在 `checkpoints/sb3_dqn_snake.zip`
+- 使用 best_model 进行评估和观看
 
 ### 命令行参数
 
@@ -421,7 +434,39 @@ Episode  100 | Score:   2 | Avg50:   1.2 | Eps: 0.9800 | EvalAvg:   1.5 | EvalMa
 - `eval_self_deaths`：评估阶段撞自己次数
 - `eval_timeout_deaths`：评估阶段超时次数
 
-## 15. 后续优化方向
+## 15. SB3 DQN 训练结果
+
+### 200000 timesteps 训练结果
+
+| 指标 | 值 |
+|------|-----|
+| 平均得分 | 3.95 |
+| 最高得分 | 18 |
+| 最低得分 | 1 |
+| 平均步数 | 123.4 |
+| 撞自己 | 37% |
+| 撞墙 | 33% |
+| 超时 | 30% |
+
+**分析：**
+- 相比 10000 timesteps（平均分 0.45，超时 90%），效果显著提升
+- 死亡原因分布更均匀，说明 agent 学会了吃食物
+- 建议继续训练到 500000 timesteps 以获得更好效果
+
+### 推荐训练命令
+
+```bash
+# 正式训练
+python train_sb3_dqn.py --timesteps 200000 --state-mode basic17
+
+# 评估 best model
+python evaluate_sb3.py --model checkpoints/sb3_best/best_model.zip --episodes 100 --state-mode basic17
+
+# 观看 best model
+python main.py --model checkpoints/sb3_best/best_model.zip --model-type sb3 --episodes 5 --fps 10 --terminal-render --state-mode basic17
+```
+
+## 16. 后续优化方向
 
 1. **算法升级**：
    - Dueling DQN：分离状态价值和动作优势
