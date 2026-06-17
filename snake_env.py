@@ -1,8 +1,16 @@
-"""Snake RL 环境，兼容 Gymnasium 风格接口。改进版：新奖励、重复检测、动态步数限制。"""
+"""Snake RL 环境，兼容 Gymnasium API。"""
 
 import numpy as np
 from collections import deque
 from snake_game import SnakeGame
+
+# 尝试导入 gymnasium
+try:
+    import gymnasium as gym
+    from gymnasium import spaces
+    HAS_GYM = True
+except ImportError:
+    HAS_GYM = False
 
 
 class SnakeEnv:
@@ -11,24 +19,35 @@ class SnakeEnv:
     即使没有 gymnasium 库，也提供 reset/step/render/close 接口。
     """
 
-    def __init__(self, grid_size: int = 20, seed: int = None):
+    def __init__(self, grid_size: int = 20, seed: int = None, state_mode: str = "basic17"):
         self.grid_size = grid_size
         self.seed_val = seed
+        self.state_mode = state_mode
         self.game = SnakeGame(grid_size=grid_size, seed=seed)
         self.steps_since_food = 0
         self.prev_distance = 0.0
-        # 重复状态检测
         self.state_history = deque(maxlen=100)
-        # 统计
         self.no_food_timeout_count = 0
         self.repeat_penalty_count = 0
+
+        # 状态维度
+        self._state_dim = self.game.get_state_dim(state_mode)
+
+        # 定义 action_space 和 observation_space
+        if HAS_GYM:
+            self.action_space = spaces.Discrete(3)
+            self.observation_space = spaces.Box(
+                low=-1.0, high=1.0,
+                shape=(self._state_dim,),
+                dtype=np.float32,
+            )
 
     @property
     def no_food_step_limit(self) -> int:
         """动态步数限制: max(100, len(snake) * 20)"""
         return max(100, len(self.game.snake) * 20)
 
-    def reset(self, seed: int = None):
+    def reset(self, seed=None, options=None):
         """重置环境。返回: (observation, info)"""
         if seed is not None:
             self.seed_val = seed
@@ -37,7 +56,7 @@ class SnakeEnv:
         self.prev_distance = self.game.distance_to_food()
         self.state_history.clear()
 
-        obs = np.array(self.game.get_state(), dtype=np.float32)
+        obs = np.array(self.game.get_state(self.state_mode), dtype=np.float32)
         info = {"score": self.game.score, "steps": self.game.steps}
         return obs, info
 
@@ -65,7 +84,6 @@ class SnakeEnv:
             if result["ate_food"]:
                 self.steps_since_food = 0
             else:
-                # 距离奖励（降低强度）
                 new_distance = self.game.distance_to_food()
                 if new_distance < old_distance:
                     reward += 0.02
@@ -73,7 +91,6 @@ class SnakeEnv:
                     reward -= 0.02
                 self.prev_distance = new_distance
 
-            # 重复状态检测（绕圈惩罚）
             state_key = self._get_state_key()
             self.state_history.append(state_key)
             repeat_count = sum(1 for s in self.state_history if s == state_key)
@@ -82,20 +99,16 @@ class SnakeEnv:
                 repeat_penalty = True
                 self.repeat_penalty_count += 1
 
-            # 死胡同检测: 可达空间极小
             free_space = self.game.get_free_space_after_action(0)
             if free_space < 0.05:
                 reward -= 0.5
 
-            # Tail 可达性惩罚
-            if not self.game.get_tail_reachable_after_action(action):
-                reward -= 0.2
+            if self.state_mode == "reachable23":
+                if not self.game.get_tail_reachable_after_action(action):
+                    reward -= 0.2
+                if not self.game.get_food_reachable_after_action(action):
+                    reward -= 0.1
 
-            # Food 可达性惩罚
-            if not self.game.get_food_reachable_after_action(action):
-                reward -= 0.1
-
-            # 动态步数限制
             if self.steps_since_food >= self.no_food_step_limit:
                 terminated = True
                 reward -= 10.0
@@ -104,7 +117,6 @@ class SnakeEnv:
 
         truncated = no_food_timeout
 
-        # 确定死亡原因
         death_reason = None
         if terminated:
             if no_food_timeout:
@@ -114,7 +126,7 @@ class SnakeEnv:
             else:
                 death_reason = "unknown"
 
-        obs = np.array(self.game.get_state(), dtype=np.float32)
+        obs = np.array(self.game.get_state(self.state_mode), dtype=np.float32)
         info = {
             "score": self.game.score,
             "steps": self.game.steps,
@@ -135,8 +147,8 @@ class SnakeEnv:
 
     @property
     def observation_space_dim(self) -> int:
-        return self.game.get_state_dim()
+        return self._state_dim
 
     @property
     def action_space_dim(self) -> int:
-        return self.game.get_action_dim()
+        return 3

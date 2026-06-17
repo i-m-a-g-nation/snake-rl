@@ -12,13 +12,13 @@ from agent import DQNAgent
 from utils import ensure_dir, append_train_log
 
 
-def evaluate_agent(agent: DQNAgent, grid_size: int = 20, eval_episodes: int = 20, seed: int = 1000):
+def evaluate_agent(agent: DQNAgent, grid_size: int = 20, eval_episodes: int = 20, seed: int = 1000, state_mode: str = "basic17"):
     """
     评估 Agent（epsilon=0，不训练）。
     返回: (avg_score, max_score, avg_steps, death_stats)
     death_stats: {"wall_collision": int, "self_collision": int, "no_food_timeout": int}
     """
-    env = SnakeEnv(grid_size=grid_size, seed=seed)
+    env = SnakeEnv(grid_size=grid_size, seed=seed, state_mode=state_mode)
     scores = []
     steps_list = []
     death_counts = {"wall_collision": 0, "self_collision": 0, "no_food_timeout": 0}
@@ -46,7 +46,7 @@ def train(args):
     ensure_dir("logs")
 
     # 环境
-    env = SnakeEnv(grid_size=20, seed=args.seed)
+    env = SnakeEnv(grid_size=20, seed=args.seed, state_mode=args.state_mode)
     state_dim = env.observation_space_dim
     action_dim = env.action_space_dim
 
@@ -152,7 +152,7 @@ def train(args):
         # 定期评估
         if episode % args.eval_interval == 0:
             eval_avg, eval_max, eval_steps, death_stats = evaluate_agent(
-                agent, grid_size=20, eval_episodes=args.eval_episodes, seed=2000
+                agent, grid_size=20, eval_episodes=args.eval_episodes, seed=2000, state_mode=args.state_mode
             )
             log_record["eval_avg_score"] = round(eval_avg, 2)
             log_record["eval_max_score"] = eval_max
@@ -234,5 +234,6 @@ if __name__ == "__main__":
     parser.add_argument("--warmup-steps", type=int, default=1000, help="预热步数")
     parser.add_argument("--eval-interval", type=int, default=100, help="评估间隔 (episodes)")
     parser.add_argument("--eval-episodes", type=int, default=20, help="评估局数")
+    parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23"], help="状态模式")
     args = parser.parse_args()
     train(args)

@@ -25,9 +25,9 @@ DIRECTION_NAMES = {0: "UP", 1: "RIGHT", 2: "DOWN", 3: "LEFT"}
 ACTION_NAMES = {0: "Straight", 1: "Left", 2: "Right"}
 
 
-def watch_terminal_realtime(model_path: str, episodes: int = 5, grid_size: int = 20, fps: int = 10):
+def watch_terminal_realtime(model_path: str, episodes: int = 5, grid_size: int = 20, fps: int = 10, state_mode: str = "basic17"):
     """终端逐帧刷新观看 Agent。"""
-    env = SnakeEnv(grid_size=grid_size)
+    env = SnakeEnv(grid_size=grid_size, state_mode=state_mode)
     agent = DQNAgent(
         state_dim=env.observation_space_dim,
         action_dim=env.action_space_dim,
@@ -99,9 +99,9 @@ def _build_frame(env: SnakeEnv, ep: int, total_eps: int, action: int, fps: int, 
     return "\n".join(lines) + "\n"
 
 
-def watch_terminal_summary(model_path: str, episodes: int = 5, grid_size: int = 20):
+def watch_terminal_summary(model_path: str, episodes: int = 5, grid_size: int = 20, state_mode: str = "basic17"):
     """终端模式观看 Agent (仅 episode 结束后输出统计)。"""
-    env = SnakeEnv(grid_size=grid_size)
+    env = SnakeEnv(grid_size=grid_size, state_mode=state_mode)
     agent = DQNAgent(
         state_dim=env.observation_space_dim,
         action_dim=env.action_space_dim,
@@ -137,7 +137,7 @@ def watch_terminal_summary(model_path: str, episodes: int = 5, grid_size: int = 
     print("观看结束。")
 
 
-def watch_pygame(model_path: str, episodes: int = 5, grid_size: int = 20, fps: int = 10):
+def watch_pygame(model_path: str, episodes: int = 5, grid_size: int = 20, fps: int = 10, state_mode: str = "basic17"):
     """Pygame 图形界面观看 Agent。"""
     CELL_SIZE = 30
     WIDTH = grid_size * CELL_SIZE
@@ -149,7 +149,7 @@ def watch_pygame(model_path: str, episodes: int = 5, grid_size: int = 20, fps: i
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("consolas", 20)
 
-    env = SnakeEnv(grid_size=grid_size)
+    env = SnakeEnv(grid_size=grid_size, state_mode=state_mode)
     agent = DQNAgent(
         state_dim=env.observation_space_dim,
         action_dim=env.action_space_dim,
@@ -211,6 +211,7 @@ if __name__ == "__main__":
     parser.add_argument("--grid-size", type=int, default=20, help="网格大小")
     parser.add_argument("--fps", type=int, default=10, help="帧率")
     parser.add_argument("--terminal-render", action="store_true", help="终端逐帧渲染")
+    parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23"], help="状态模式")
     args = parser.parse_args()
 
     if not os.path.exists(args.model):
@@ -220,10 +221,10 @@ if __name__ == "__main__":
 
     if HAS_PYGAME and not args.terminal_render:
         print("使用 pygame 图形界面观看。")
-        watch_pygame(args.model, args.episodes, args.grid_size, args.fps)
+        watch_pygame(args.model, args.episodes, args.grid_size, args.fps, args.state_mode)
     elif args.terminal_render:
         print("终端逐帧观看 (按 Q 退出)。")
-        watch_terminal_realtime(args.model, args.episodes, args.grid_size, args.fps)
+        watch_terminal_realtime(args.model, args.episodes, args.grid_size, args.fps, args.state_mode)
     else:
         print("终端摘要模式 (安装 pygame 可启用图形界面，或加 --terminal-render 逐帧观看)。")
-        watch_terminal_summary(args.model, args.episodes, args.grid_size)
+        watch_terminal_summary(args.model, args.episodes, args.grid_size, args.state_mode)

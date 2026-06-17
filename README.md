@@ -2,19 +2,21 @@
 
 ## 1. 项目简介
 
-本项目实现了一个经典的贪吃蛇（Snake）游戏，并使用深度强化学习（Deep Q-Network, DQN）训练智能体（Agent）自动玩游戏。项目采用纯 PyTorch 手写 DQN 算法，不依赖 stable_baselines3 等第三方 RL 库，便于理解算法原理，适合课程设计报告。
+本项目实现了一个经典的贪吃蛇（Snake）游戏，并使用深度强化学习（Deep Q-Network, DQN）训练智能体（Agent）自动玩游戏。项目提供两种训练方式：
+
+1. **手写 DQN** (`train.py`)：纯 PyTorch 实现，便于理解 RL 算法原理
+2. **SB3 DQN** (`train_sb3_dqn.py`)：使用 Stable-Baselines3 成熟库，训练更稳定
 
 **核心特性：**
-- 纯 PyTorch 手写 DQN / Double DQN
-- 经验回放（Experience Replay）+ Warmup 预热
-- Epsilon-Greedy 探索策略
-- 17 维扩展状态（含 Flood Fill 可达空间）
-- 重复状态检测 + 动态步数限制
+- 手写 DQN / Double DQN（学习算法原理）
+- Stable-Baselines3 DQN（成熟库版本）
+- 两种状态模式：basic17（推荐）/ reachable23（实验）
+- Gymnasium API 兼容
+- 经验回放 + Warmup 预热
 - 定期评估 + Best Model 自动保存
-- Gymnasium 风格环境接口（自实现，不强制依赖 gymnasium）
-- CUDA 加速训练（自动检测 GPU）
-- 终端实时刷新游玩（Windows 使用 msvcrt，无需 pygame）
-- 方向键控制（人工游玩使用绝对方向，DQN 内部使用相对动作）
+- 死亡原因统计
+- CUDA 加速训练
+- 终端实时刷新游玩
 
 ## 2. 当前环境检测结果
 
@@ -55,11 +57,14 @@ snake_rl/
 ├── environment_report.txt # 环境检测报告
 ├── main.py                # 加载模型观看 Agent 玩
 ├── play_human.py          # 人工游玩入口（终端实时刷新）
-├── train.py               # 训练入口
+├── train.py               # 手写 DQN 训练入口
+├── train_sb3_dqn.py       # Stable-Baselines3 DQN 训练入口
+├── evaluate_deaths.py     # 手写 DQN 死亡原因评估
+├── evaluate_sb3.py        # SB3 DQN 评估
 ├── agent.py               # DQN Agent 实现
-├── snake_env.py           # Snake RL 环境 (Gymnasium 风格)
-├── snake_game.py          # Snake 游戏纯逻辑 + 方向转换函数
-├── terminal_input.py      # 终端输入模块 (msvcrt 非阻塞键盘)
+├── snake_env.py           # Snake RL 环境 (Gymnasium API)
+├── snake_game.py          # Snake 游戏纯逻辑
+├── terminal_input.py      # 终端输入模块
 ├── replay_buffer.py       # 经验回放缓冲区
 ├── models.py              # DQN 神经网络模型
 ├── utils.py               # 工具函数
@@ -93,53 +98,45 @@ python play_human.py
 
 ## 7. 如何训练
 
+### 方式一：手写 DQN（学习算法原理）
+
 ```bash
-conda activate nlp-env
-cd snake_rl
-
-# 快速测试 (50 episodes)
-python train.py --episodes 50
-
-# 推荐训练 (3000 episodes, Double DQN)
+# 默认使用 basic17 状态
 python train.py --episodes 3000 --double-dqn
 
-# 禁用 Double DQN 对比实验
-python train.py --episodes 3000 --no-double-dqn
-
-# 自定义参数
-python train.py --episodes 2000 --lr 1e-3 --batch-size 64
+# 使用 reachable23 状态（实验性）
+python train.py --episodes 3000 --state-mode reachable23
 ```
 
-**命令行参数：**
+### 方式二：Stable-Baselines3 DQN（更稳定）
+
+```bash
+# 安装 SB3（如未安装）
+pip install stable-baselines3
+
+# 训练
+python train_sb3_dqn.py --timesteps 200000 --state-mode basic17
+```
+
+### 命令行参数
+
+**train.py（手写 DQN）：**
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--episodes` | 3000 | 训练轮数 |
+| `--state-mode` | basic17 | 状态模式 (basic17 / reachable23) |
 | `--double-dqn` | True | 使用 Double DQN |
-| `--no-double-dqn` | - | 禁用 Double DQN |
 | `--lr` | 5e-4 | 学习率 |
 | `--batch-size` | 128 | 批量大小 |
-| `--replay-size` | 100000 | 回放缓冲区大小 |
-| `--target-update` | 500 | 目标网络更新间隔 |
-| `--epsilon-end` | 0.02 | 最终探索率 |
-| `--epsilon-decay` | 50000 | 探索率衰减步数 |
-| `--warmup-steps` | 1000 | 预热步数 |
-| `--eval-interval` | 100 | 评估间隔 (episodes) |
-| `--eval-episodes` | 20 | 评估局数 |
-| `--render` | False | 是否渲染（会变慢） |
-| `--save-path` | checkpoints/final_model.pt | 模型保存路径 |
-| `--seed` | 42 | 随机种子 |
+| `--eval-interval` | 100 | 评估间隔 |
 
-**注意：**
-- 训练默认不渲染终端，保证训练速度
-- 每 `eval_interval` episodes 评估一次，自动保存 best_model.pt
-- Warmup 阶段只收集经验，不更新网络
-
-**训练输出示例：**
-```
-Episode    10 | Score:   0 | Reward:   -10.01 | Eps: 0.9990 | Avg50:   0.0
-Episode   100 | Score:   2 | Reward:    15.48 | Eps: 0.9800 | Avg50:   1.2 | EvalAvg:   1.5 | EvalMax:   3
-Episode   500 | Score:   8 | Reward:    72.31 | Eps: 0.9000 | Avg50:   5.6 | EvalAvg:   6.2 | EvalMax:  12
-```
+**train_sb3_dqn.py（SB3 DQN）：**
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--timesteps` | 200000 | 训练步数 |
+| `--state-mode` | basic17 | 状态模式 |
+| `--lr` | 1e-4 | 学习率 |
+| `--buffer-size` | 100000 | 回放缓冲区大小 |
 
 ## 8. 如何观看 Agent
 
@@ -173,40 +170,32 @@ python main.py --model checkpoints/best_model.pt --episodes 10 --fps 15
 
 ## 9. 状态空间设计
 
-状态为 **23 维特征向量**，包含危险感知、方向、食物位置、归一化特征、Flood Fill 可达空间、Tail 可达性和 Food 可达性：
+项目提供两种状态模式，通过 `--state-mode` 参数切换：
+
+### basic17（默认推荐）
+
+17 维状态，包含危险感知、方向、食物位置、归一化特征和 Flood Fill 可达空间：
 
 | 索引 | 特征 | 含义 |
 |------|------|------|
-| 0 | danger_straight | 前方是否有危险（墙/自身） |
-| 1 | danger_left | 左侧是否有危险 |
-| 2 | danger_right | 右侧是否有危险 |
-| 3 | direction_up | 当前方向是否朝上 |
-| 4 | direction_down | 当前方向是否朝下 |
-| 5 | direction_left | 当前方向是否朝左 |
-| 6 | direction_right | 当前方向是否朝右 |
-| 7 | food_left | 食物是否在左边 |
-| 8 | food_right | 食物是否在右边 |
-| 9 | food_up | 食物是否在上方 |
-| 10 | food_down | 食物是否在下方 |
-| 11 | distance_to_food_normalized | 距食物曼哈顿距离 / 最大距离 |
-| 12 | snake_length_normalized | 蛇身长度 / 总格子数 |
-| 13 | steps_since_food_normalized | 未吃到食物步数 / 动态上限 |
-| 14 | free_space_straight | 直行后可达空间比例 |
-| 15 | free_space_left | 左转后可达空间比例 |
-| 16 | free_space_right | 右转后可达空间比例 |
-| 17 | tail_reachable_straight | 直行后能否到达蛇尾 |
-| 18 | tail_reachable_left | 左转后能否到达蛇尾 |
-| 19 | tail_reachable_right | 右转后能否到达蛇尾 |
-| 20 | food_reachable_straight | 直行后能否到达食物 |
-| 21 | food_reachable_left | 左转后能否到达食物 |
-| 22 | food_reachable_right | 右转后能否到达食物 |
+| 0-2 | danger_straight/left/right | 危险检测 |
+| 3-6 | direction_up/down/left/right | 方向 one-hot |
+| 7-10 | food_left/right/up/down | 食物相对位置 |
+| 11 | distance_to_food_normalized | 距食物距离归一化 |
+| 12 | snake_length_normalized | 蛇身长度归一化 |
+| 13 | steps_since_food_normalized | 未吃食物步数归一化 |
+| 14-16 | free_space_straight/left/right | Flood Fill 可达空间 |
 
-**为什么从 17 维扩展到 23 维：**
-- SelfDeath 高达 85%~100%，说明蛇变长后路径规划不足
-- 原 17 维缺少"能否到达尾巴"的信息，agent 无法判断是否会被困住
-- `tail_reachable` 让 agent 知道哪个动作能保持与蛇尾的连通性
-- `food_reachable` 让 agent 知道哪个动作不会把自己封死
-- 这两个特征帮助 agent 做长期规划，而不是只看眼前
+### reachable23（实验性）
+
+23 维状态，在 basic17 基础上增加 Tail/Food 可达性：
+
+| 索引 | 特征 | 含义 |
+|------|------|------|
+| 17-19 | tail_reachable_straight/left/right | 动作后能否到达蛇尾 |
+| 20-22 | food_reachable_straight/left/right | 动作后能否到达食物 |
+
+**推荐使用 basic17**，reachable23 训练效果可能更差（特征过多导致学习困难）。
 
 ## 10. 动作空间设计
 
@@ -377,14 +366,15 @@ pip install stable-baselines3
 
 1. **Double DQN** ✅：减少 Q 值过估计，默认启用
 2. **Flood Fill 可达空间** ✅：检测死胡同，新增 3 维状态特征
-3. **扩展状态空间** ✅：从 11 维扩展到 23 维
+3. **两种状态模式** ✅：basic17（推荐）/ reachable23（实验）
 4. **重复状态检测** ✅：检测绕圈并给予惩罚
 5. **动态步数限制** ✅：max(100, 蛇长×20)
 6. **Best Model 保存** ✅：定期评估，保存最优模型
 7. **Warmup 预热** ✅：攒够经验后再训练
 8. **奖励函数优化** ✅：降低距离奖励，增加绕圈/死胡同惩罚
 9. **死亡原因统计** ✅：记录每局结束原因，评估时输出死亡比例
-10. **Tail/Food 可达性** ✅：检测动作后是否能到达蛇尾/食物
+10. **Stable-Baselines3 DQN** ✅：成熟库版本，训练更稳定
+11. **Gymnasium API 兼容** ✅：支持 gymnasium 环境检查
 
 ## 15. 死亡原因分析
 
@@ -440,3 +430,27 @@ Episode  100 | Score:   2 | Avg50:   1.2 | Eps: 0.9800 | EvalAvg:   1.5 | EvalMa
    - 可变网格大小
    - 多食物模式
    - 障碍物模式
+
+## 16. 学习路线
+
+建议按以下顺序学习本项目：
+
+### 第一步：理解 SnakeEnv
+- 阅读 `snake_env.py`，理解状态空间、动作空间、奖励函数
+- 运行 `python play_human.py`，手动玩几局，感受游戏机制
+
+### 第二步：理解手写 DQN
+- 阅读 `models.py`，理解 Q 网络结构
+- 阅读 `replay_buffer.py`，理解经验回放
+- 阅读 `agent.py`，理解 DQN 算法（policy network、target network、epsilon-greedy）
+- 运行 `python train.py --episodes 100`，观察训练过程
+
+### 第三步：对比 SB3 DQN
+- 安装 `pip install stable-baselines3`
+- 运行 `python train_sb3_dqn.py --timesteps 50000`
+- 对比手写 DQN 和 SB3 DQN 的训练效果
+
+### 第四步：深入理解
+- 阅读 [CleanRL 的 dqn.py](https://github.com/vwxyzjn/cleanrl/blob/master/cleanrl/dqn.py)，理解更标准的单文件实现
+- 尝试修改超参数，观察对训练效果的影响
+- 尝试修改奖励函数，理解奖励工程

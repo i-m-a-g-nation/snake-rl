@@ -235,18 +235,10 @@ class SnakeGame:
 
         return self._is_reachable(new_head, self.food, obstacles)
 
-    def get_state(self) -> list:
+    def get_state(self, state_mode: str = "basic17") -> list:
         """
-        获取扩展状态表示 (23维):
-        [danger_straight, danger_left, danger_right,
-         dir_up, dir_down, dir_left, dir_right,
-         food_left, food_right, food_up, food_down,
-         distance_to_food_normalized,
-         snake_length_normalized,
-         steps_since_food_normalized,
-         free_space_straight, free_space_left, free_space_right,
-         tail_reachable_straight, tail_reachable_left, tail_reachable_right,
-         food_reachable_straight, food_reachable_left, food_reachable_right]
+        获取状态表示。
+        state_mode: "basic17" 或 "reachable23"
         """
         head_r, head_c = self.snake[0]
 
@@ -302,17 +294,8 @@ class SnakeGame:
         free_space_left = self.get_free_space_after_action(ACTION_LEFT)
         free_space_right = self.get_free_space_after_action(ACTION_RIGHT)
 
-        # Tail 可达性
-        tail_reachable_straight = 1.0 if self.get_tail_reachable_after_action(ACTION_STRAIGHT) else 0.0
-        tail_reachable_left = 1.0 if self.get_tail_reachable_after_action(ACTION_LEFT) else 0.0
-        tail_reachable_right = 1.0 if self.get_tail_reachable_after_action(ACTION_RIGHT) else 0.0
-
-        # Food 可达性
-        food_reachable_straight = 1.0 if self.get_food_reachable_after_action(ACTION_STRAIGHT) else 0.0
-        food_reachable_left = 1.0 if self.get_food_reachable_after_action(ACTION_LEFT) else 0.0
-        food_reachable_right = 1.0 if self.get_food_reachable_after_action(ACTION_RIGHT) else 0.0
-
-        return [
+        # basic17: 17 维基础状态
+        state = [
             danger_straight, danger_left, danger_right,
             dir_up, dir_down, dir_left, dir_right,
             food_left, food_right, food_up, food_down,
@@ -320,13 +303,31 @@ class SnakeGame:
             snake_length_normalized,
             steps_since_food_normalized,
             free_space_straight, free_space_left, free_space_right,
-            tail_reachable_straight, tail_reachable_left, tail_reachable_right,
-            food_reachable_straight, food_reachable_left, food_reachable_right,
         ]
 
-    def get_state_dim(self) -> int:
+        if state_mode == "reachable23":
+            # Tail 可达性
+            tail_reachable_straight = 1.0 if self.get_tail_reachable_after_action(ACTION_STRAIGHT) else 0.0
+            tail_reachable_left = 1.0 if self.get_tail_reachable_after_action(ACTION_LEFT) else 0.0
+            tail_reachable_right = 1.0 if self.get_tail_reachable_after_action(ACTION_RIGHT) else 0.0
+
+            # Food 可达性
+            food_reachable_straight = 1.0 if self.get_food_reachable_after_action(ACTION_STRAIGHT) else 0.0
+            food_reachable_left = 1.0 if self.get_food_reachable_after_action(ACTION_LEFT) else 0.0
+            food_reachable_right = 1.0 if self.get_food_reachable_after_action(ACTION_RIGHT) else 0.0
+
+            state.extend([
+                tail_reachable_straight, tail_reachable_left, tail_reachable_right,
+                food_reachable_straight, food_reachable_left, food_reachable_right,
+            ])
+
+        return state
+
+    def get_state_dim(self, state_mode: str = "basic17") -> int:
         """返回状态维度。"""
-        return 23
+        if state_mode == "reachable23":
+            return 23
+        return 17
 
     def get_action_dim(self) -> int:
         """返回动作维度。"""
