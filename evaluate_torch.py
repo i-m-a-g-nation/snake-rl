@@ -5,9 +5,11 @@ import os
 import sys
 
 import numpy as np
+import torch
 
 from snake_env import SnakeEnv
 from agent import DQNAgent
+from models import DQN, DuelingDQN
 from utils import ensure_dir, save_train_log
 
 
@@ -18,11 +20,16 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
         print("请先运行训练: python train.py --episodes 3000")
         sys.exit(1)
 
+    # 检测模型类型
+    checkpoint = torch.load(model_path, map_location="cpu")
+    is_dueling = any("shared" in k for k in checkpoint["policy_net"].keys())
+
     # 创建环境和 agent
     env = SnakeEnv(grid_size=grid_size, seed=seed, state_mode=state_mode)
     agent = DQNAgent(
         state_dim=env.observation_space_dim,
         action_dim=env.action_space_dim,
+        use_dueling=is_dueling,
     )
     agent.load(model_path)
     agent.policy_net.eval()
