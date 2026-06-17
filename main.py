@@ -27,6 +27,13 @@ try:
 except ImportError:
     HAS_SB3 = False
 
+# 尝试导入 safety_filter
+try:
+    from safety_filter import choose_safe_action
+    HAS_SAFETY_FILTER = True
+except ImportError:
+    HAS_SAFETY_FILTER = False
+
 DIRECTION_NAMES = {0: "UP", 1: "RIGHT", 2: "DOWN", 3: "LEFT"}
 ACTION_NAMES = {0: "Straight", 1: "Left", 2: "Right"}
 
@@ -62,19 +69,40 @@ def load_model(model_path: str, model_type: str, state_mode: str):
         return agent, False
 
 
-def get_action(model, state, is_sb3: bool) -> int:
-    """获取动作。"""
+def get_action(model, state, is_sb3: bool, game=None, use_safety_filter: bool = False) -> tuple:
+    """
+    获取动作。
+    返回: (action, debug_info)
+    """
     if is_sb3:
         action, _ = model.predict(state, deterministic=True)
-        return int(action)
+        return int(action), {}
     else:
-        return model.select_action(state, epsilon=0.0)
+        # 获取 Q 值
+        import torch
+        with torch.no_grad():
+            state_t = torch.FloatTensor(state).unsqueeze(0).to(model.device)
+            if hasattr(model.policy_net, 'cnn'):
+                # CNN 模式
+                q_values = model.policy_net(state_t).cpu().numpy()[0]
+            else:
+                q_values = model.policy_net(state_t).cpu().numpy()[0]
+
+        # 使用 safety filter
+        if use_safety_filter and HAS_SAFETY_FILTER and game is not None:
+            action, debug_info = choose_safe_action(game, q_values)
+            return action, debug_info
+        else:
+            return int(np.argmax(q_values)), {}
 
 
-def watch_terminal_realtime(model_path: str, episodes: int = 5, grid_size: int = 20, fps: int = 10, state_mode: str = "basic17", model_type: str = "auto"):
+def watch_terminal_realtime(model_path: str, episodes: int = 5, grid_size: int = 20, fps: int = 10, state_mode: str = "basic17", model_type: str = "auto", use_safety_filter: bool = False):
     """终端逐帧刷新观看 Agent。"""
     model, is_sb3 = load_model(model_path, model_type, state_mode)
     env = SnakeEnv(grid_size=grid_size, state_mode=state_mode)
+
+    total_overrides = 0
+    total_steps = 0
 
     hide_cursor()
     clear_screen()
@@ -84,23 +112,28 @@ def watch_terminal_realtime(model_path: str, episodes: int = 5, grid_size: int =
             state, info = env.reset(seed=ep * 100)
             done = False
             action = 0
+            debug_info = {}
 
             while not done:
                 key = get_key_nonblocking()
                 if key == "Q":
                     return
 
-                action = get_action(model, state, is_sb3)
+                action, debug_info = get_action(model, state, is_sb3, env.game, use_safety_filter)
+                if debug_info.get("override", False):
+                    total_overrides += 1
+                total_steps += 1
+
                 next_state, reward, terminated, truncated, info = env.step(action)
                 done = terminated or truncated
                 state = next_state
 
-                frame = _build_frame(env, ep, episodes, action, fps)
+                frame = _build_frame(env, ep, episodes, action, fps, use_safety_filter=use_safety_filter, debug_info=debug_info)
                 render_frame(frame)
 
                 time.sleep(1.0 / fps)
 
-            frame = _build_frame(env, ep, episodes, action, fps, game_over=True)
+            frame = _build_frame(env, ep, episodes, action, fps, game_over=True, use_safety_filter=use_safety_filter, debug_info=debug_info)
             render_frame(frame)
             time.sleep(1.0)
 
@@ -109,13 +142,22 @@ def watch_terminal_realtime(model_path: str, episodes: int = 5, grid_size: int =
 
     env.close()
 
+    if use_safety_filter and total_steps > 0:
+        override_rate = total_overrides / total_steps * 100
+        print(f"\nSafety Filter 统计:")
+        print(f"  总步数: {total_steps}")
+        print(f"  覆盖次数: {total_overrides}")
+        print(f"  覆盖率: {override_rate:.1f}%")
 
-def _build_frame(env: SnakeEnv, ep: int, total_eps: int, action: int, fps: int, game_over: bool = False) -> str:
+
+def _build_frame(env: SnakeEnv, ep: int, total_eps: int, action: int, fps: int, game_over: bool = False, use_safety_filter: bool = False, debug_info: dict = None) -> str:
     """构建完整帧字符串。"""
     game = env.game
     lines = []
 
     lines.append(f"Snake - DQN Agent Watch (Episode {ep}/{total_eps})")
+    if use_safety_filter:
+        lines.append("  SafetyFilter: ON")
     lines.append("")
     lines.append(game.render_terminal())
     lines.append("")
@@ -124,6 +166,11 @@ def _build_frame(env: SnakeEnv, ep: int, total_eps: int, action: int, fps: int, 
     act_name = ACTION_NAMES.get(action, "?")
     lines.append(f"  Score: {game.score}   Steps: {game.steps}   FPS: {fps}")
     lines.append(f"  Direction: {dir_name}   Action: {act_name}")
+
+    # Safety filter debug info
+    if use_safety_filter and debug_info:
+        if debug_info.get("override"):
+            lines.append(f"  Override: {debug_info.get('override_reason', 'safer_choice')}")
 
     if game_over:
         lines.append("  [GAME OVER]")
@@ -237,7 +284,8 @@ if __name__ == "__main__":
     parser.add_argument("--grid-size", type=int, default=20, help="网格大小")
     parser.add_argument("--fps", type=int, default=10, help="帧率")
     parser.add_argument("--terminal-render", action="store_true", help="终端逐帧渲染")
-    parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23"], help="状态模式")
+    parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23", "grid"], help="状态模式")
+    parser.add_argument("--safety-filter", action="store_true", help="启用推理阶段安全规划器")
     args = parser.parse_args()
 
     if not os.path.exists(args.model):
@@ -247,12 +295,18 @@ if __name__ == "__main__":
         print("  SB3 DQN:  python train_sb3_dqn.py --timesteps 200000")
         sys.exit(1)
 
+    if args.safety_filter and not HAS_SAFETY_FILTER:
+        print("警告: safety_filter 模块未找到，禁用安全规划器。")
+        args.safety_filter = False
+
     if HAS_PYGAME and not args.terminal_render:
         print("使用 pygame 图形界面观看。")
         watch_pygame(args.model, args.episodes, args.grid_size, args.fps, args.state_mode, args.model_type)
     elif args.terminal_render:
         print("终端逐帧观看 (按 Q 退出)。")
-        watch_terminal_realtime(args.model, args.episodes, args.grid_size, args.fps, args.state_mode, args.model_type)
+        if args.safety_filter:
+            print("SafetyFilter: ON")
+        watch_terminal_realtime(args.model, args.episodes, args.grid_size, args.fps, args.state_mode, args.model_type, args.safety_filter)
     else:
         print("终端摘要模式 (安装 pygame 可启用图形界面，或加 --terminal-render 逐帧观看)。")
         watch_terminal_summary(args.model, args.episodes, args.grid_size, args.state_mode, args.model_type)

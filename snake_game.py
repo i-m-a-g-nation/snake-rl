@@ -1,6 +1,7 @@
 """Snake 游戏纯逻辑，不绑定 RL。支持 flood fill 可达空间计算。"""
 
 import random
+import numpy as np
 from collections import deque
 from typing import Optional, Tuple
 
@@ -267,11 +268,14 @@ class SnakeGame:
 
         return self._is_reachable(new_head, self.food, obstacles)
 
-    def get_state(self, state_mode: str = "basic17") -> list:
+    def get_state(self, state_mode: str = "basic17"):
         """
         获取状态表示。
-        state_mode: "basic17" 或 "reachable23"
+        state_mode: "basic17", "reachable23", "grid"
         """
+        if state_mode == "grid":
+            return self.get_grid_state()
+
         head_r, head_c = self.snake[0]
 
         straight_dir = self.direction
@@ -355,10 +359,60 @@ class SnakeGame:
 
         return state
 
-    def get_state_dim(self, state_mode: str = "basic17") -> int:
+    def get_grid_state(self) -> np.ndarray:
+        """
+        获取 grid 状态表示。
+        返回 shape: (C, H, W)，C=8 通道：
+        0: snake head
+        1: snake body
+        2: food
+        3: wall/boundary
+        4: direction_up
+        5: direction_down
+        6: direction_left
+        7: direction_right
+        """
+        C, H, W = 8, self.grid_size, self.grid_size
+        grid = np.zeros((C, H, W), dtype=np.float32)
+
+        # channel 0: snake head
+        hr, hc = self.snake[0]
+        grid[0, hr, hc] = 1.0
+
+        # channel 1: snake body (excluding head)
+        for i, (r, c) in enumerate(self.snake):
+            if i > 0:
+                grid[1, r, c] = 1.0
+
+        # channel 2: food
+        if self.food:
+            fr, fc = self.food
+            grid[2, fr, fc] = 1.0
+
+        # channel 3: wall/boundary
+        grid[3, 0, :] = 1.0
+        grid[3, -1, :] = 1.0
+        grid[3, :, 0] = 1.0
+        grid[3, :, -1] = 1.0
+
+        # channel 4-7: direction (global fill)
+        if self.direction == DIR_UP:
+            grid[4, :, :] = 1.0
+        elif self.direction == DIR_DOWN:
+            grid[5, :, :] = 1.0
+        elif self.direction == DIR_LEFT:
+            grid[6, :, :] = 1.0
+        elif self.direction == DIR_RIGHT:
+            grid[7, :, :] = 1.0
+
+        return grid
+
+    def get_state_dim(self, state_mode: str = "basic17"):
         """返回状态维度。"""
         if state_mode == "reachable23":
             return 23
+        elif state_mode == "grid":
+            return (8, self.grid_size, self.grid_size)  # 返回 shape tuple
         return 17
 
     def get_action_dim(self) -> int:

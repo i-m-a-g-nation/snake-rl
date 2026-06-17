@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 
-from models import DQN, DuelingDQN, NoisyDuelingDQN
+from models import DQN, DuelingDQN, NoisyDuelingDQN, CNNDuelingDQN
 from replay_buffer import ReplayBuffer
 from prioritized_replay_buffer import PrioritizedReplayBuffer
 from n_step_buffer import NStepBuffer
@@ -19,7 +19,7 @@ class DQNAgent:
 
     def __init__(
         self,
-        state_dim: int,
+        state_dim,
         action_dim: int,
         hidden_dim: int = 128,
         gamma: float = 0.99,
@@ -33,6 +33,7 @@ class DQNAgent:
         use_double_dqn: bool = True,
         use_dueling: bool = False,
         use_noisy_net: bool = False,
+        use_cnn: bool = False,
         use_action_mask: bool = False,
         use_per: bool = False,
         per_alpha: float = 0.6,
@@ -58,6 +59,7 @@ class DQNAgent:
         self.use_double_dqn = use_double_dqn
         self.use_dueling = use_dueling
         self.use_noisy_net = use_noisy_net
+        self.use_cnn = use_cnn
         self.use_action_mask = use_action_mask
         self.use_per = use_per
         self.per_beta_start = per_beta_start
@@ -66,7 +68,12 @@ class DQNAgent:
         self.n_step = n_step
 
         # 网络
-        if use_noisy_net:
+        if use_cnn:
+            # CNN 模式: state_dim = (C, H, W)
+            channels, grid_size, _ = state_dim
+            self.policy_net = CNNDuelingDQN(channels, grid_size, action_dim, hidden_dim).to(self.device)
+            self.target_net = CNNDuelingDQN(channels, grid_size, action_dim, hidden_dim).to(self.device)
+        elif use_noisy_net:
             self.policy_net = NoisyDuelingDQN(state_dim, action_dim, hidden_dim).to(self.device)
             self.target_net = NoisyDuelingDQN(state_dim, action_dim, hidden_dim).to(self.device)
         elif use_dueling:

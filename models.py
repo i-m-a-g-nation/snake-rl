@@ -142,3 +142,56 @@ class NoisyDuelingDQN(nn.Module):
         for module in self.modules():
             if isinstance(module, NoisyLinear):
                 module.reset_noise()
+
+
+class CNNDuelingDQN(nn.Module):
+    """CNN Dueling DQN: 用于 grid observation。"""
+
+    def __init__(self, input_channels: int, grid_size: int, action_dim: int, hidden_dim: int = 256):
+        super().__init__()
+        self.action_dim = action_dim
+
+        # CNN 特征提取
+        self.cnn = nn.Sequential(
+            nn.Conv2d(input_channels, 32, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
+            nn.ReLU(),
+            nn.Flatten(),
+        )
+
+        # 计算 flatten 后的维度
+        flatten_dim = 64 * grid_size * grid_size
+
+        self.shared = nn.Sequential(
+            nn.Linear(flatten_dim, hidden_dim),
+            nn.ReLU(),
+        )
+
+        # Value stream
+        self.value_stream = nn.Sequential(
+            nn.Linear(hidden_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),
+        )
+
+        # Advantage stream
+        self.advantage_stream = nn.Sequential(
+            nn.Linear(hidden_dim, 128),
+            nn.ReLU(),
+            nn.Linear(128, action_dim),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        前向传播。
+        输入 x shape: (batch, C, H, W)
+        """
+        cnn_out = self.cnn(x)
+        shared_out = self.shared(cnn_out)
+        value = self.value_stream(shared_out)
+        advantage = self.advantage_stream(shared_out)
+        q_values = value + advantage - advantage.mean(dim=1, keepdim=True)
+        return q_values

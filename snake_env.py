@@ -42,15 +42,23 @@ class SnakeEnv(_BaseEnv):
 
         # 状态维度
         self._state_dim = self.game.get_state_dim(state_mode)
+        self._is_grid = (state_mode == "grid")
 
         # 定义 action_space 和 observation_space
         if HAS_GYM:
             self.action_space = spaces.Discrete(3)
-            self.observation_space = spaces.Box(
-                low=-1.0, high=1.0,
-                shape=(self._state_dim,),
-                dtype=np.float32,
-            )
+            if self._is_grid:
+                self.observation_space = spaces.Box(
+                    low=0.0, high=1.0,
+                    shape=self._state_dim,
+                    dtype=np.float32,
+                )
+            else:
+                self.observation_space = spaces.Box(
+                    low=-1.0, high=1.0,
+                    shape=(self._state_dim,),
+                    dtype=np.float32,
+                )
 
     @property
     def no_food_step_limit(self) -> int:

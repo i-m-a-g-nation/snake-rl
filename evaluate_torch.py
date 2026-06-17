@@ -1,4 +1,4 @@
-"""评估手写 DQN 的 .pt 模型。"""
+"""评估手写 DQN 的 .pt 模型。支持 safety filter。"""
 
 import argparse
 import os
@@ -9,11 +9,18 @@ import torch
 
 from snake_env import SnakeEnv
 from agent import DQNAgent
-from models import DQN, DuelingDQN, NoisyDuelingDQN
+from models import DQN, DuelingDQN, NoisyDuelingDQN, CNNDuelingDQN
 from utils import ensure_dir, save_train_log
 
+# 尝试导入 safety_filter
+try:
+    from safety_filter import choose_safe_action
+    HAS_SAFETY_FILTER = True
+except ImportError:
+    HAS_SAFETY_FILTER = False
 
-def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mode: str = "basic17", seed: int = 3000, save_path: str = None):
+
+def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mode: str = "basic17", seed: int = 3000, save_path: str = None, use_safety_filter: bool = False):
     """评估手写 DQN 模型。"""
     if not os.path.exists(model_path):
         print(f"模型文件不存在: {model_path}")
@@ -22,8 +29,9 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
 
     # 检测模型类型
     checkpoint = torch.load(model_path, map_location="cpu")
-    is_noisy = any("weight_sigma" in k for k in checkpoint["policy_net"].keys())
-    is_dueling = any("shared" in k for k in checkpoint["policy_net"].keys()) and not is_noisy
+    is_cnn = any("cnn" in k for k in checkpoint["policy_net"].keys())
+    is_noisy = any("weight_sigma" in k for k in checkpoint["policy_net"].keys()) and not is_cnn
+    is_dueling = any("shared" in k for k in checkpoint["policy_net"].keys()) and not is_cnn and not is_noisy
 
     # 创建环境和 agent
     env = SnakeEnv(grid_size=grid_size, seed=seed, state_mode=state_mode)
@@ -32,6 +40,7 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
         action_dim=env.action_space_dim,
         use_dueling=is_dueling,
         use_noisy_net=is_noisy,
+        use_cnn=is_cnn,
     )
     agent.load(model_path)
     agent.policy_net.eval()
@@ -40,6 +49,7 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
     print(f"设备: {agent.device}")
     print(f"状态模式: {state_mode}")
     print(f"评估局数: {episodes}")
+    print(f"Safety Filter: {'ON' if use_safety_filter else 'OFF'}")
     print("-" * 60)
 
     records = []
@@ -52,15 +62,43 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
         "unknown": 0,
     }
 
+    # Safety filter 统计
+    total_overrides = 0
+    total_steps = 0
+    immediate_death_prevented = 0
+    low_space_avoid = 0
+    tail_unreachable_avoid = 0
+
     for ep in range(1, episodes + 1):
         state, info = env.reset(seed=seed + ep)
         done = False
+        ep_overrides = 0
 
         while not done:
-            action = agent.select_action(state, epsilon=0.0)
+            # 获取动作
+            if use_safety_filter and HAS_SAFETY_FILTER:
+                # 获取 Q 值
+                with torch.no_grad():
+                    state_t = torch.FloatTensor(state).unsqueeze(0).to(agent.device)
+                    q_values = agent.policy_net(state_t).cpu().numpy()[0]
+                action, debug_info = choose_safe_action(env.game, q_values)
+                if debug_info.get("override", False):
+                    ep_overrides += 1
+                    total_overrides += 1
+                    reason = debug_info.get("override_reason", "")
+                    if reason == "low_space":
+                        low_space_avoid += 1
+                    elif reason == "tail_unreachable":
+                        tail_unreachable_avoid += 1
+                    else:
+                        immediate_death_prevented += 1
+            else:
+                action = agent.select_action(state, epsilon=0.0)
+
             next_state, reward, terminated, truncated, info = env.step(action)
             done = terminated or truncated
             state = next_state
+            total_steps += 1
 
         score = info["score"]
         steps = info["steps"]
@@ -79,6 +117,7 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
             "score": score,
             "steps": steps,
             "death_reason": death_reason,
+            "safety_overrides": ep_overrides,
         })
 
     env.close()
@@ -94,6 +133,7 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
     self_rate = death_counts["self_collision"] / total * 100
     timeout_rate = death_counts["no_food_timeout"] / total * 100
     unknown_rate = death_counts["unknown"] / total * 100
+    override_rate = total_overrides / total_steps * 100 if total_steps > 0 else 0
 
     # 输出结果
     print(f"\n{'=' * 60}")
@@ -108,6 +148,16 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
     print(f"  撞自己次数:   {death_counts['self_collision']}  ({self_rate:.1f}%)")
     print(f"  超时次数:     {death_counts['no_food_timeout']}  ({timeout_rate:.1f}%)")
     print(f"  未知次数:     {death_counts['unknown']}  ({unknown_rate:.1f}%)")
+
+    if use_safety_filter:
+        print()
+        print(f"  Safety Filter 统计:")
+        print(f"    总步数:       {total_steps}")
+        print(f"    覆盖次数:     {total_overrides}")
+        print(f"    覆盖率:       {override_rate:.1f}%")
+        print(f"    阻止立即死亡: {immediate_death_prevented}")
+        print(f"    避免低空间:   {low_space_avoid}")
+        print(f"    避免尾部不可达: {tail_unreachable_avoid}")
 
     # 诊断
     print(f"\n{'=' * 60}")
@@ -134,6 +184,11 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
     # 保存 CSV
     csv_path = save_path or "logs/torch_eval.csv"
     ensure_dir(os.path.dirname(csv_path))
+
+    # 添加安全过滤器信息到记录
+    for r in records:
+        r["safety_filter_enabled"] = use_safety_filter
+
     save_train_log(csv_path, records)
     print(f"\n详细记录已保存: {csv_path}")
 
@@ -144,6 +199,8 @@ def evaluate(model_path: str, episodes: int = 100, grid_size: int = 20, state_mo
         "avg_steps": avg_steps,
         "death_counts": death_counts,
         "rates": rates,
+        "total_overrides": total_overrides,
+        "override_rate": override_rate,
     }
 
 
@@ -152,11 +209,16 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="checkpoints/best_model.pt", help="模型路径")
     parser.add_argument("--episodes", type=int, default=100, help="评估局数")
     parser.add_argument("--grid-size", type=int, default=20, help="网格大小")
-    parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23"], help="状态模式")
+    parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23", "grid"], help="状态模式")
     parser.add_argument("--seed", type=int, default=3000, help="随机种子")
     parser.add_argument("--save-path", type=str, default=None, help="CSV 保存路径")
     parser.add_argument("--num-seeds", type=int, default=1, help="多 seed 评估数量")
+    parser.add_argument("--safety-filter", action="store_true", help="启用推理阶段安全规划器")
     args = parser.parse_args()
+
+    if args.safety_filter and not HAS_SAFETY_FILTER:
+        print("警告: safety_filter 模块未找到，禁用安全规划器。")
+        args.safety_filter = False
 
     if args.num_seeds > 1:
         # 多 seed 评估
@@ -164,12 +226,11 @@ if __name__ == "__main__":
         for i in range(args.num_seeds):
             seed = args.seed + i * 1000
             print(f"\n--- Seed {i+1}/{args.num_seeds} (seed={seed}) ---")
-            result = evaluate(args.model, args.episodes, args.grid_size, args.state_mode, seed, None)
+            result = evaluate(args.model, args.episodes, args.grid_size, args.state_mode, seed, None, args.safety_filter)
             if result:
                 all_results.append(result)
 
         if all_results:
-            import numpy as np
             avg_scores = [r["avg_score"] for r in all_results]
             max_scores = [r["max_score"] for r in all_results]
             print(f"\n{'=' * 60}")
@@ -179,6 +240,11 @@ if __name__ == "__main__":
             print(f"  mean_max_score: {np.mean(max_scores):.1f}")
             print(f"  best_avg_score: {max(avg_scores):.2f}")
 
+            if args.safety_filter:
+                total_overrides = sum(r["total_overrides"] for r in all_results)
+                avg_override_rate = np.mean([r["override_rate"] for r in all_results])
+                print(f"  mean_override_rate: {avg_override_rate:.1f}%")
+
             # 保存结果
             csv_path = args.save_path or "logs/multiseed_eval.csv"
             ensure_dir(os.path.dirname(csv_path))
@@ -187,9 +253,17 @@ if __name__ == "__main__":
                 records.append({
                     "seed_index": i,
                     "seed": args.seed + i * 1000,
-                    **r,
+                    "avg_score": r["avg_score"],
+                    "max_score": r["max_score"],
+                    "min_score": r["min_score"],
+                    "avg_steps": r["avg_steps"],
+                    "self_collision_rate": r["rates"]["self_collision"],
+                    "wall_collision_rate": r["rates"]["wall_collision"],
+                    "timeout_rate": r["rates"]["no_food_timeout"],
+                    "override_rate": r["override_rate"],
+                    "safety_filter": args.safety_filter,
                 })
             save_train_log(csv_path, records)
             print(f"\n详细记录已保存: {csv_path}")
     else:
-        evaluate(args.model, args.episodes, args.grid_size, args.state_mode, args.seed, args.save_path)
+        evaluate(args.model, args.episodes, args.grid_size, args.state_mode, args.seed, args.save_path, args.safety_filter)

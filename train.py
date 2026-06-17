@@ -64,6 +64,7 @@ def train(args):
         use_double_dqn=args.double_dqn,
         use_dueling=args.dueling,
         use_noisy_net=args.noisy_net,
+        use_cnn=args.cnn,
         use_action_mask=args.action_mask,
         use_per=args.per,
         per_alpha=args.per_alpha,
@@ -78,6 +79,7 @@ def train(args):
     print(f"Double DQN: {args.double_dqn}")
     print(f"Dueling: {args.dueling}")
     print(f"NoisyNet: {args.noisy_net}")
+    print(f"CNN: {args.cnn}")
     print(f"Action Mask: {args.action_mask}")
     print(f"PER: {args.per}")
     print(f"N-step: {args.n_step}")
@@ -218,13 +220,14 @@ def train(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Snake DQN 训练")
     parser.add_argument("--episodes", type=int, default=3000, help="训练轮数")
-    parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23"], help="状态模式")
+    parser.add_argument("--state-mode", type=str, default="basic17", choices=["basic17", "reachable23", "grid"], help="状态模式")
     parser.add_argument("--seed", type=int, default=42, help="随机种子")
     # DQN 参数
     parser.add_argument("--double-dqn", action="store_true", default=True, help="使用 Double DQN")
     parser.add_argument("--no-double-dqn", dest="double_dqn", action="store_false", help="禁用 Double DQN")
     parser.add_argument("--dueling", action="store_true", default=False, help="使用 Dueling DQN")
     parser.add_argument("--noisy-net", action="store_true", default=False, help="使用 NoisyNet")
+    parser.add_argument("--cnn", action="store_true", default=False, help="使用 CNN (grid state mode)")
     parser.add_argument("--action-mask", action="store_true", default=False, help="使用 Action Mask")
     parser.add_argument("--per", action="store_true", default=False, help="使用 Prioritized Experience Replay")
     parser.add_argument("--n-step", type=int, default=1, help="N-step return")
