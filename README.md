@@ -2,13 +2,27 @@
 
 ## 当前推荐
 
-| 目标 | 模型 | 评分 | 命令 |
-|------|------|------|------|
-| **最强 Agent** | hand-written Double DQN basic17 | avg=23.93, max=57 | `python main.py --model checkpoints/best_model_basic17.pt --model-type torch --episodes 5 --fps 10 --terminal-render --state-mode basic17` |
-| 标准库 Baseline | SB3 DQN 200k best | avg=4.40, max=14 | `python main.py --model checkpoints/sb3_best/best_model.zip --model-type sb3 --episodes 5 --fps 10 --terminal-render --state-mode basic17` |
-| ~~退化实验~~ | SB3 500k continue | avg=1.54, max=4 | 不推荐使用 |
+**当前最强模型：Dueling Double DQN basic17**
+```
+checkpoints/best_model_dueling_basic17.pt
+avg_score = 35.40 ± 0.76
+max_score = 67
+```
 
-**结论：** 手写 Double DQN 显著优于 SB3 vanilla DQN。
+观看命令：
+```bash
+python main.py --model checkpoints/best_model_dueling_basic17.pt --model-type torch --episodes 5 --fps 10 --terminal-render --state-mode basic17
+```
+
+| 方法 | 平均分 | 最高分 | 备注 |
+|------|--------|--------|------|
+| **Dueling Double DQN** | **35.40** | **67** | 当前最强 |
+| Old Best basic17 | 35.36 | 55 | 旧模型 |
+| Baseline retrain | 30.27 | 66 | 纯 Double DQN |
+| SB3 200k | 4.40 | 14 | SB3 baseline |
+| Action Mask | 2.89 | 11 | 有害，不推荐 |
+
+**关键发现：** Dueling DQN 有效，Action Mask 有害。
 
 ## 1. 项目简介
 

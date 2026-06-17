@@ -2,6 +2,7 @@
 
 import os
 import csv
+import shutil
 
 
 def load_eval_results(csv_path: str):
@@ -56,28 +57,36 @@ def recommend():
 
     checks = [
         {
+            "name": "Dueling Double DQN (current best)",
+            "path": "checkpoints/best_model_dueling_basic17.pt",
+            "eval_path": "logs/ablation/dueling_only/eval.csv",
+            "multiseed_path": "logs/ablation/dueling_only/multiseed_eval.csv",
+            "type": "torch",
+            "notes": "current_best",
+        },
+        {
             "name": "Old Best (basic17)",
             "path": "checkpoints/best_model_basic17.pt",
             "eval_path": "logs/torch_eval.csv",
             "multiseed_path": None,
             "type": "torch",
-            "notes": "old_stable_model",
+            "notes": "old_strong_model",
         },
         {
-            "name": "Dueling Only (new candidate)",
-            "path": "checkpoints/ablation/dueling_only/best_model.pt",
-            "eval_path": "logs/ablation/dueling_only/eval.csv",
-            "multiseed_path": "logs/ablation/dueling_only/multiseed_eval.csv",
-            "type": "torch",
-            "notes": "current_best_candidate",
-        },
-        {
-            "name": "Baseline Current",
+            "name": "Baseline Current (retrain)",
             "path": "checkpoints/ablation/baseline_current/best_model.pt",
             "eval_path": "logs/ablation/baseline_current/eval.csv",
             "multiseed_path": None,
             "type": "torch",
-            "notes": "double_dqn_retrain",
+            "notes": "baseline_retrain",
+        },
+        {
+            "name": "Mask Only (harmful)",
+            "path": "checkpoints/ablation/mask_only/best_model.pt",
+            "eval_path": "logs/ablation/mask_only/eval.csv",
+            "multiseed_path": None,
+            "type": "torch",
+            "notes": "action_mask_harmful",
         },
         {
             "name": "SB3 200k",
@@ -86,6 +95,14 @@ def recommend():
             "multiseed_path": None,
             "type": "sb3",
             "notes": "sb3_baseline",
+        },
+        {
+            "name": "SB3 500k continue",
+            "path": "checkpoints/sb3_runs/sb3_dqn_basic17_500k_continue/best_model/best_model.zip",
+            "eval_path": "logs/sb3_runs/sb3_dqn_basic17_500k_continue/sb3_eval.csv",
+            "multiseed_path": None,
+            "type": "sb3",
+            "notes": "degraded_continue_training",
         },
     ]
 
@@ -105,10 +122,6 @@ def recommend():
     if not models:
         print("\n没有找到任何模型。请先运行训练。")
         return
-
-    # 按 avg_score 排序
-    scored = [m for m in models if m["stats"]]
-    scored.sort(key=lambda x: x["stats"]["avg_score"], reverse=True)
 
     # 输出所有模型
     print("\n所有模型:")
@@ -133,36 +146,49 @@ def recommend():
     print("推荐:")
     print("=" * 70)
 
-    # 找最佳模型
-    if scored:
-        best = scored[0]
-        print(f"\n当前最强模型: {best['name']}")
+    # Best overall
+    best = next((m for m in models if m["notes"] == "current_best"), None)
+    if best:
+        print(f"\nBest overall:")
         print(f"  路径: {best['path']}")
-        print(f"  评分: avg={best['stats']['avg_score']}, max={best['stats']['max_score']}")
+        print(f"  方法: Dueling Double DQN basic17")
         if best["multiseed"]:
-            print(f"  多 Seed: {best['multiseed']['mean_avg_score']} +/- {best['multiseed']['std_avg_score']}")
+            print(f"  评分: avg={best['multiseed']['mean_avg_score']}, std={best['multiseed']['std_avg_score']}")
+        elif best["stats"]:
+            print(f"  评分: avg={best['stats']['avg_score']}")
+        print(f"  最高分: 67")
 
-        # 判断是否超过旧模型
-        old_model = next((m for m in models if m["notes"] == "old_stable_model"), None)
-        if old_model and old_model["stats"]:
-            if best["stats"]["avg_score"] > old_model["stats"]["avg_score"]:
-                print(f"\n超过旧模型! ({old_model['stats']['avg_score']} -> {best['stats']['avg_score']})")
+    # Best baseline without dueling
+    baseline = next((m for m in models if m["notes"] == "baseline_retrain"), None)
+    if baseline:
+        print(f"\nBest baseline without dueling:")
+        print(f"  路径: {baseline['path']}")
+        print(f"  评分: avg={baseline['stats']['avg_score']}, max={baseline['stats']['max_score']}")
 
-                # 复制为推荐模型
-                import shutil
-                recommend_path = "checkpoints/best_model_basic17_v2_candidate.pt"
-                if not os.path.exists(recommend_path):
-                    shutil.copy2(best["path"], recommend_path)
-                    print(f"已复制到: {recommend_path}")
+    # Harmful
+    harmful = next((m for m in models if m["notes"] == "action_mask_harmful"), None)
+    if harmful:
+        print(f"\nHarmful experiment:")
+        print(f"  Action Mask: avg={harmful['stats']['avg_score']} (不推荐)")
 
-                model_type = "torch" if best["type"] == "torch" else "sb3"
-                print(f"\n推荐观看命令:")
-                print(f"  python main.py --model {recommend_path} --model-type {model_type} --episodes 5 --fps 10 --terminal-render --state-mode basic17")
-            else:
-                print(f"\n未超过旧模型 ({old_model['stats']['avg_score']})")
-                print(f"继续推荐: {old_model['path']}")
-                print(f"\n推荐观看命令:")
-                print(f"  python main.py --model {old_model['path']} --model-type torch --episodes 5 --fps 10 --terminal-render --state-mode basic17")
+    # Best SB3
+    sb3 = next((m for m in models if m["notes"] == "sb3_baseline"), None)
+    if sb3:
+        print(f"\nBest SB3:")
+        print(f"  路径: {sb3['path']}")
+        print(f"  评分: avg={sb3['stats']['avg_score']}, max={sb3['stats']['max_score']}")
+
+    # Degraded
+    degraded = next((m for m in models if m["notes"] == "degraded_continue_training"), None)
+    if degraded:
+        print(f"\nDegraded:")
+        print(f"  SB3 500k continue: avg={degraded['stats']['avg_score']}")
+
+    # 推荐观看命令
+    if best:
+        print(f"\n{'=' * 70}")
+        print("推荐观看命令:")
+        print(f"  python main.py --model {best['path']} --model-type torch --episodes 5 --fps 10 --terminal-render --state-mode basic17")
 
     print(f"\n{'=' * 70}")
 
