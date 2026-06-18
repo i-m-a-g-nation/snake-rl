@@ -1,0 +1,6 @@
+seed_index,seed,avg_score,max_score,min_score,avg_steps,self_collision_rate,wall_collision_rate,timeout_rate,override_rate,safety_filter
+0,3000,31.57,66,9,477.58,94.0,6.0,0.0,0.0,False
+1,4000,32.8,70,6,514.09,94.0,6.0,0.0,0.0,False
+2,5000,32.45,83,7,489.16,95.0,5.0,0.0,0.0,False
+3,6000,33.83,70,9,520.37,94.0,6.0,0.0,0.0,False
+4,7000,34.09,64,7,526.2,96.0,4.0,0.0,0.0,False

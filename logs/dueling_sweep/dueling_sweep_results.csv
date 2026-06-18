@@ -1,0 +1,10 @@
+run_name,config,seed,episodes,learning_rate,epsilon_end,epsilon_decay_steps,target_update_interval,avg_score,std_score,max_score,avg_steps,wall_collision_rate,self_collision_rate,timeout_rate,beats_current_best,notes
+config_A_seed_0,A,0,1000,0.0005,0.03,100000,500,25.92,0.95,27.6,0,0,0,0,False,
+config_A_seed_1,A,1,1000,0.0005,0.03,100000,500,34.82,0.25,35.1,0,0,0,0,False,
+config_B_seed_0,B,0,1000,0.0003,0.03,100000,500,25.71,0.53,26.6,0,0,0,0,False,
+config_B_seed_1,B,1,1000,0.0003,0.03,100000,500,32.91,0.4,33.4,0,0,0,0,False,
+config_C_seed_0,C,0,1000,0.0005,0.01,100000,500,27.73,0.8,28.4,0,0,0,0,False,
+config_C_seed_1,C,1,1000,0.0005,0.01,100000,500,28.84,1.02,30.3,0,0,0,0,False,
+config_D_seed_0,D,0,1000,0.0005,0.03,120000,500,24.78,0.96,26.2,0,0,0,0,False,
+config_D_seed_1,D,1,1000,0.0005,0.03,120000,500,29.45,0.97,30.6,0,0,0,0,False,
+config_E_seed_0,E,0,1000,0.0005,0.03,80000,500,25.54,0.45,26.1,0,0,0,0,False,
