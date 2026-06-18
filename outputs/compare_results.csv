@@ -1,6 +1,7 @@
 method,model_path,avg_score,max_score,min_score,avg_steps,wall_collision_rate,self_collision_rate,timeout_rate,notes
-old_best_basic17,checkpoints/best_model_basic17.pt,35.36,55,3,558.4,0.0,100.0,0.0,old_stable_model
 dueling_only,checkpoints/ablation/dueling_only/best_model.pt,34.48,67,7,535.2,5.0,95.0,0.0,dueling_without_mask
+old_best_basic17,checkpoints/best_model_basic17.pt,34.47,71,3,537.9,2.0,98.0,0.0,old_stable_model
+config_A_seed_1_3000,checkpoints/dueling_sweep_focused/config_A_seed_1_3000/best_model.pt,32.95,70.6,6,489.2,5.0,95.0,0.0,high_max_but_lower_average_not_recommended
 baseline_current_retrain,checkpoints/ablation/baseline_current/best_model.pt,30.27,66,6,457.0,5.0,95.0,0.0,double_dqn_retrain
 mask_dueling,checkpoints/ablation/mask_dueling/best_model.pt,16.14,36,1,222.0,3.0,97.0,0.0,mask_dueling_mixed
 sb3_dqn_200k,checkpoints/sb3_best/best_model.zip,4.4,14,1,121.4,25.0,60.0,15.0,sb3_baseline
